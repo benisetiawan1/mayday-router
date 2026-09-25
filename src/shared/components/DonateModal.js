@@ -15,7 +15,7 @@ const DEFAULT_DONATE_DATA = {
       description: "Dukung via QRIS, GoPay, OVO, DANA, LinkAja, ShopeePay",
       icon: "volunteer_activism",
       color: "#FAAE2B",
-      url: "https://saweria.co/vanszs"
+      url: "https://saweria.co/bendfrozien"
     },
     {
       id: "trakteer",
@@ -23,7 +23,7 @@ const DEFAULT_DONATE_DATA = {
       description: "Dukung via QRIS / E-Wallet / Bank Transfer",
       icon: "favorite",
       color: "#C9283E",
-      url: "https://teer.id/bevan_satriaa"
+      url: "https://trakteer.id/ben_dfrozien"
     },
     {
       id: "kofi",
@@ -31,7 +31,7 @@ const DEFAULT_DONATE_DATA = {
       description: "Support via Card or PayPal",
       icon: "local_cafe",
       color: "#13C3FF",
-      url: "https://ko-fi.com/bevansatriaa"
+      url: "https://ko-fi.com/bendfrozien"
     }
   ]
 };

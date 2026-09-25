@@ -63,7 +63,7 @@ export default function LandingPage() {
                 Start Free
               </button>
               <button type="button" 
-                onClick={() => window.open("https://github.com/Vanszs/Mayday#readme", "_blank")}
+                onClick={() => window.open("https://github.com/benisetiawan1/mayday-router#readme", "_blank")}
                 className="w-full sm:w-auto h-14 px-10 rounded-lg border border-[#3a2f27] hover:bg-[#1a1433] text-white text-lg font-bold transition-all"
               >
                 Read Documentation
