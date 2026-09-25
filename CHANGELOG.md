@@ -28,3 +28,10 @@
 
 ### Catatan
 - Versi ini untuk uji deteksi update channel (tanpa perubahan fungsional baru).
+
+## 0.25.0-beta (2026-09-25)
+
+### Update flow Docker-aware
+- Popup update tidak lagi menyarankan "npm i -g mayday" di mode Docker.
+- Install command diganti: bash scripts/deploy-mayday-router.sh (git pull -> docker build -> backup DB -> swap).
+- Endpoint /api/version/shutdown dikunci (409) di mode Docker agar tidak membunuh proses container secara sembrono.

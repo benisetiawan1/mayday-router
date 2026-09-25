@@ -22,6 +22,20 @@ import { detectRuntime, updateAndRestartCommand } from "@/shared/utils/runtime";
 //   { success, message, runtime, mode, autoRestart: boolean,
 //     installCommand?: string, // when mode="manual" or runtime unsupported
 //     autoRestartCommand?: string }
+// Mayday: Docker/self-host mode TIDAK melakukan shutdown in-app.
+// Update nyata = deploy script (build image + swap container), bukan kill proses.
+import { UPDATER_CONFIG } from "@/shared/constants/config";
+
+function dockerGuard() {
+  if (UPDATER_CONFIG.deployMode) {
+    return Response.json(
+      { error: "Docker/self-host mode. Update via deploy script: bash scripts/deploy-mayday-router.sh" },
+      { status: 409 }
+    );
+  }
+  return null;
+}
+
 export async function POST(request) {
   // Detect runtime as early as possible — it informs the response shape.
   const runtime = detectRuntime();

@@ -164,3 +164,4 @@ export const __test__ = {
   injectSystemMarker, MIMO_SYSTEM_MARKER, BOOTSTRAP_URL, CHAT_URL, SESSION_AFFINITY_PREFIX,
 };
 
+export default MimoFreeExecutor;

@@ -17,8 +17,9 @@ export const GITHUB_CONFIG = {
 // Updater configuration
 export const UPDATER_CONFIG = {
   npmPackageName: "mayday",
-  installCmd: "npm i -g mayday",
-  installCmdLatest: "npm i -g mayday@latest --prefer-online",
+  deployMode: true, // Docker/self-host: update via deploy script, bukan npm global
+  installCmd: "bash scripts/deploy-mayday-router.sh",
+  installCmdLatest: "bash scripts/deploy-mayday-router.sh  # git pull -> docker build -> backup DB -> swap container",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,
