@@ -137,7 +137,7 @@ function RouterNode({ data }) {
 
       <img
         src="/favicon.svg"
-        alt="VansAI"
+        alt="Mayday"
         className={`w-6 h-6 mr-2 ${powering ? "topology-router-icon" : ""}`}
         loading="lazy"
         decoding="async"
@@ -145,7 +145,7 @@ function RouterNode({ data }) {
         height={24}
       />
       <span className={`text-sm font-bold ${powering ? "topology-router-label text-yellow-300" : "text-primary"}`}>
-        VansAI
+        Mayday
       </span>
       {data.activeCount > 0 && (
         <span className="ml-2 px-1.5 py-0.5 rounded-full bg-yellow-400 text-black text-xs font-bold topology-router-badge">

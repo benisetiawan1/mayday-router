@@ -16,7 +16,7 @@ export default function GlobalError({ error, reset }) {
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-red-500/10 text-red-600 dark:text-red-400">
               <span className="material-symbols-outlined text-[24px]">emergency_home</span>
             </div>
-            <h1 className="text-xl font-semibold">VansAI could not load</h1>
+            <h1 className="text-xl font-semibold">Mayday could not load</h1>
             <p className="mt-2 text-sm leading-6 text-text-muted">
               A critical error stopped the app shell from rendering. Try loading it again.
             </p>

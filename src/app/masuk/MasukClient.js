@@ -89,7 +89,7 @@ export default function MasukClient({ initialAuth }) {
               <circle cx="16" cy="9" r="2" fill="#6366f1"/>
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-primary mb-2">VansAI</h1>
+          <h1 className="text-3xl font-bold text-primary mb-2">Mayday</h1>
           <p className="text-text-muted text-sm">
             {authMode === "oidc" && oidcConfigured
               ? "Masuk dengan OIDC provider untuk mengakses dashboard"
