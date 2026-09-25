@@ -1,37 +1,56 @@
-# mayday-router
+# Mayday Router
 
-Custom Mayday gateway build — forked/patched dari [9router](https://github.com/decolua/9router) / VansRouter, branded "Mayday" (mayday.20c.org). Repo PRIVATE — pusat source, patching, dan skills; tidak lagi build langsung dari upstream.
+Mayday Router adalah gateway AI router self-hosted — build kustom berbasis
+[9router](https://github.com/decolua/9router) / VansRouter dengan branding
+"Mayday" (mayday.20c.org), berisi patch & penyempurnaan custom.
+
+> Repo ini adalah **sumber build resmi**. Upstream (9router/VansRouter) hanya
+> dijadikan referensi pengembangan — bukan sumber build langsung.
 
 ## Struktur
 
-| Path | Isi |
-|---|---|
-| `source/` | Source code hasil patch Mayday — sumber build, bukan upstream |
-| `source/skills/mayday*/` | SKILL.md untuk AI agents (dashboard → Skills) |
-| `source/scripts/auto-patch.py` | Semua patch Mayday (38 patch idempotent) |
+```
+├── src/          # source app (Next.js + SSE gateway)
+├── open-sse/     # provider adapters & capabilities
+├── public/       # aset statis (skills)
+├── skills/       # SKILL.md untuk AI agents (dashboard → Skills)
+├── scripts/      # build helpers & auto-patch
+├── Dockerfile    # build image mayday-router:latest
+├── package.json  # deps & scripts
+└── .env.example  # template env
+```
 
 ## Build & Deploy
 
 ```bash
-cd source
+# Build image
 docker build -t mayday-router:latest .
-docker stop 9router && docker rm 9router
-docker run -d --name 9router --network webapps -p 20128:20128 \
+
+# Deploy (lihat scripts/deploy-mayday-router.sh untuk versi lengkap)
+docker run -d --name mayday-router --network webapps -p 20128:20128 \
   --env-file .env.example \
-  -v /DATAS/AppData/WebBase/9routers/db:/app/data \
+  -v /DATAS/AppData/WebBase/mayday-router/db:/app/data \
   -e JWT_SECRET=<dari env> -e DATA_DIR=/app/data --restart always \
   mayday-router:latest
 ```
 
-> Kredensial/asli (`data/`, `*.sqlite`, `.env`) TIDAK disimpan di repo ini. Backup DB sebelum rebuild.
+> Kredensial/data (`db/`, `*.sqlite`, `.env`) TIDAK disimpan di repo. Backup DB
+> sebelum rebuild.
 
-## Referensi Upstream
+## Skills
 
-- 9router: https://github.com/decolua/9router (branch `master`)
-- Hanya untuk diff saat porting fitur baru — bukan sumber build.
+`skills/*/SKILL.md` — dokumen yang dipaste ke AI agent mana pun supaya paham
+cara pakai Mayday. Diserve self-hosted dari `/skills/*` di dashboard.
 
-## Operasional
+## Kredit
 
-- `source/skills/*/SKILL.md` — dipaste ke AI agent mana pun supaya paham cara pakai Mayday
-- `source/scripts/auto-patch.py --check` — verifikasi patch masih cocok setelah ada perubahan source
-- Insiden & preferensi operasional: lihat Hermes skill `9router-mayday-ops`
+Mayday Router dibangun di atas pekerjaan komunitas open-source:
+
+- **9router** — https://github.com/decolua/9router
+- **VansRouter** — fork/evolusi 9router
+
+Terima kasih kepada maintainer kedua proyek di atas.
+
+## Lisensi
+
+Lihat `LICENSE`.

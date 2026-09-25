@@ -18,7 +18,7 @@ docker rm 9router 2>/dev/null || true
 
 echo "==> Jalankan container baru: $NAME"
 docker run -d --name "$NAME" --network webapps -p "$PORT:$PORT" \
-  --env-file /DATAS/AppData/WebBase/mayday-router/source/.env.example \
+  --env-file /DATAS/AppData/WebBase/mayday-router-repo/.env.example \
   -v "$DB_DIR:/app/data" \
   -e JWT_SECRET="$JWT_SECRET" \
   -e DATA_DIR=/app/data \
