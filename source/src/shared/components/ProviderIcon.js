@@ -4,14 +4,6 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
 
-function resolveSrc(src, providerId) {
-  if (providerId) return getProviderIconSrc(providerId);
-  if (!src) return null;
-  const m = String(src).match(/^\/providers\/([^/]+)\.png$/i);
-  if (m) return getProviderIconSrc(m[1]);
-  return src;
-}
-
 export default function ProviderIcon({
   src,
   providerId,
@@ -21,8 +13,34 @@ export default function ProviderIcon({
   fallbackText = "?",
   fallbackColor,
 }) {
-  const effectiveSrc = resolveSrc(src, providerId);
+  const providerName = providerId || (src ? String(src).match(/^\/providers\/([^/.]+)/i)?.[1] : null);
+  const effectiveSrc = providerName ? getProviderIconSrc(providerName) : src;
   const [errored, setErrored] = useState(false);
+
+  if (providerName === "a6api" || providerName === "a6api-cli") {
+    return (
+      <span
+        className={`inline-flex items-center justify-center font-bold rounded-full ${className}`.trim()}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          display: "grid",
+          placeItems: "center",
+          position: "relative",
+          overflow: "hidden",
+          color: "var(--navy, #1F2937)",
+          fontSize: `${Math.max(10, Math.floor(size * 0.35))}px`,
+          letterSpacing: 0,
+          background: "radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .38), transparent 22%), conic-gradient(from 210deg, #3157ff, #16b8a6, #74c86a, #3157ff)",
+          boxShadow: "0 12px 26px #3157ff38",
+          isolation: "isolate",
+        }}
+      >
+        <span>A6</span>
+      </span>
+    );
+  }
 
   if (!effectiveSrc || errored) {
     return (
@@ -50,9 +68,7 @@ export default function ProviderIcon({
       loading="lazy"
       decoding="async"
       onError={() => {
-        const m = effectiveSrc.match(/^\/providers\/([^/]+)\.png$/i);
-        if (m) markProviderIconMissing(m[1]);
-        if (providerId) markProviderIconMissing(providerId);
+        if (providerName) markProviderIconMissing(providerName);
         setErrored(true);
       }}
     />

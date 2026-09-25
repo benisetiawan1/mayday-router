@@ -6,7 +6,6 @@ import { AI_PROVIDERS, getProviderAlias } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { TTS_PROVIDER_CONFIG } from "@/shared/constants/ttsProviders";
-import { translate } from "@/i18n/runtime";
 import { getTtsVoicesForModel } from "open-sse/config/ttsModels.js";
 import { GOOGLE_TTS_LANGUAGES } from "open-sse/config/googleTtsLanguages.js";
 import { Row } from "./exampleShared";
@@ -41,7 +40,7 @@ export function TtsExampleCard({ providerId }) {
 
   // Form state
   const [input, setInput]               = useState("Hello, this is a text to speech test.");
-  const [style, setStyle]               = useState(""); // style/voice instructions (e.g. MiMo voicedesign)
+  const [style, setStyle]               = useState("");
   const [apiKey, setApiKey]             = useState("");
   const [useTunnel, setUseTunnel]       = useState(false);
   const [localEndpoint, setLocalEndpoint]   = useState("");
@@ -61,20 +60,16 @@ export function TtsExampleCard({ providerId }) {
   const [modalSearch, setModalSearch]       = useState("");
   const [modalError, setModalError]         = useState("");
   const [byLang, setByLang]                 = useState({});
-  // Language hint (e.g. Gemini/MiMo): guides the spoken language without affecting voice selection
+  // Language hint (e.g. Gemini): controls the spoken language without affecting voice selection
   const [languageHint, setLanguageHint]     = useState("");
-  // Number of stored provider connections (shown when no dashboard API key)
-  const [connectionCount, setConnectionCount] = useState(0);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-side hydration of window.location.origin.
     setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch callback.
       .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
-      .catch(() => {});
-    fetch("/api/providers", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => { setConnectionCount((d.connections || []).filter((c) => c.provider === providerId && c.isActive !== false).length); })
       .catch(() => {});
     fetch("/api/tunnel/status")
       .then((r) => r.json())
@@ -115,14 +110,13 @@ export function TtsExampleCard({ providerId }) {
   useEffect(() => {
     if (!config.voicesPerModel || !selectedModel) return;
     const voices = getTtsVoicesForModel(providerId, selectedModel) || [];
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- derived state from props (model selection); recomputed when model changes.
     setCountryVoices(voices);
     if (voices.length) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived state from props.
       setSelectedVoice(voices[0].id);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived state from props.
       setSelectedVoiceName(voices[0].name || voices[0].id);
-    } else {
-      // Model has no preset voices (voicedesign/voiceclone) — drop stale voice
-      setSelectedVoice("");
-      setSelectedVoiceName("");
     }
   }, [selectedModel]);
 
@@ -196,14 +190,14 @@ export function TtsExampleCard({ providerId }) {
   const ttsBody = (() => {
     const b = { model: modelFull, input };
     if (config.hasLanguageHint && languageHint) b.language = languageHint;
-    if (config.hasStyleInput && style.trim()) b.style = style.trim();
+    if (config.hasStyleInput && style.trim()) b.style = style.trim().slice(0, 1000);
     return b;
   })();
   const curlSnippet = `curl -X POST ${endpoint}/v1/audio/speech${responseFormat === "json" ? "?response_format=json" : ""} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${apiKey || "YOUR_KEY"}" \\
   -d '${JSON.stringify(ttsBody)}' \\
-  ${responseFormat === "json" ? "" : "--output speech.mp3"}`;
+  ${responseFormat === "json" ? "" : `--output speech.${providerId === "xiaomi-mimo" ? "wav" : "mp3"}`}`;
 
   const handleRun = async () => {
     if (!input.trim() || !modelFull) return;
@@ -275,9 +269,7 @@ export function TtsExampleCard({ providerId }) {
             <span className="px-3 py-1.5 text-sm font-mono text-text-main bg-sidebar rounded-lg truncate block">
               {apiKey
                 ? `${apiKey.slice(0, 8)}${"•".repeat(Math.min(20, Math.max(0, apiKey.length - 8)))}`
-                : connectionCount > 0
-                  ? <span className="text-text-muted italic">Using stored key(s) · {connectionCount} connection{connectionCount > 1 ? "s" : ""}</span>
-                  : <span className="text-text-muted italic">No key configured</span>}
+                : <span className="text-text-muted italic">No key configured</span>}
             </span>
           </Row>
 
@@ -299,7 +291,7 @@ export function TtsExampleCard({ providerId }) {
             </Row>
           )}
 
-          {/* Language hint dropdown (Gemini, Xiaomi MiMo) — sends body.language to guide pronunciation */}
+          {/* Language hint dropdown (Gemini) — sends body.language to guide pronunciation */}
           {config.hasLanguageHint && (
             <Row label="Language">
               <select
@@ -308,11 +300,9 @@ export function TtsExampleCard({ providerId }) {
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
               >
                 <option value="">Auto-detect</option>
-                {(config.languageOptions || GOOGLE_TTS_LANGUAGES).map((l) =>
-                  typeof l === "string"
-                    ? <option key={l} value={l}>{l}</option>
-                    : <option key={l.id} value={l.name}>{l.name}</option>
-                )}
+                {GOOGLE_TTS_LANGUAGES.map((l) => (
+                  <option key={l.id} value={l.name}>{l.name}</option>
+                ))}
               </select>
             </Row>
           )}
@@ -340,7 +330,7 @@ export function TtsExampleCard({ providerId }) {
             </Row>
           )}
 
-          {/* Voice chips — shown after language picked (edge-tts, local-device) or always (OpenAI/ElevenLabs/MiMo) */}
+          {/* Voice chips — shown after language picked (edge-tts, local-device) or always (OpenAI/ElevenLabs) */}
           {countryVoices.length > 0 && (
             <Row label="Voice">
               <div className="flex flex-wrap gap-1.5">
@@ -358,9 +348,7 @@ export function TtsExampleCard({ providerId }) {
                         : "border-border text-text-muted hover:text-primary hover:border-primary/40"
                     }`}
                   >
-                    {v.name}
-                    {v.language ? ` · ${v.language}` : ""}
-                    {v.gender ? ` · ${v.gender[0].toUpperCase()}` : ""}
+                    {v.name}{v.gender ? ` · ${v.gender[0].toUpperCase()}` : ""}
                     {v.free_users_allowed === true && (
                       <span className="ml-1.5 px-1 py-0.5 text-[9px] font-semibold rounded bg-green-500/15 text-green-600 border border-green-500/20">Free</span>
                     )}
@@ -440,27 +428,16 @@ export function TtsExampleCard({ providerId }) {
             </div>
           </Row>
 
-          {/* Style / voice instructions (Xiaomi MiMo) */}
           {config.hasStyleInput && (
-            <Row label={translate("Style")}>
-              <div className="relative">
-                <textarea
-                  value={style}
-                  onChange={(e) => setStyle(e.target.value)}
-                  placeholder={translate("e.g. a warm, gentle voice, speaking slowly with a British accent")}
-                  rows={2}
-                  className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary resize-none"
-                />
-                {style && (
-                  <button
-                    type="button"
-                    onClick={() => setStyle("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">close</span>
-                  </button>
-                )}
-              </div>
+            <Row label="Style">
+              <textarea
+                value={style}
+                onChange={(e) => setStyle(e.target.value)}
+                maxLength={1000}
+                placeholder="e.g. a warm, gentle voice, speaking slowly"
+                rows={2}
+                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary resize-none"
+              />
             </Row>
           )}
 
@@ -512,7 +489,7 @@ export function TtsExampleCard({ providerId }) {
                 <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                   Response {latency && <span className="font-normal normal-case">&#9889; {latency}ms</span>}
                 </span>
-                <a href={audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
+                <a href={audioUrl} download={`speech.${jsonResponse?.format || responseFormat}`} className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
                   <span className="material-symbols-outlined text-[14px]">download</span>
                   Download
                 </a>

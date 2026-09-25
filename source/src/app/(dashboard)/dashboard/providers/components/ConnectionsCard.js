@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
-import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 
 // ── CooldownTimer ──────────────────────────────────────────────
@@ -26,8 +25,6 @@ function CooldownTimer({ until }) {
   if (!remaining) return null;
   return <span className="text-xs text-orange-500 font-mono">⏱ {remaining}</span>;
 }
-
-CooldownTimer.propTypes = { until: PropTypes.string.isRequired };
 
 // ── ConnectionRow ──────────────────────────────────────────────
 function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete }) {
@@ -60,16 +57,14 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const proxyBadgeVariant = boundProxyPool?.isActive === true ? "success" : (boundProxyPoolId || hasLegacyProxy) ? "error" : "default";
 
   const modelLockUntil = Object.entries(connection)
+    .filter(([k]) => k.startsWith("modelLock_") || k.startsWith("modelExhausted_"))
+    .some(([k, v]) => k.startsWith("modelExhausted_") ? v === true : (v && new Date(v).getTime() > Date.now())) ? new Date(8640000000000000).toISOString() : 
+    Object.entries(connection)
     .filter(([k]) => k.startsWith("modelLock_"))
     .map(([, v]) => v).filter(Boolean).sort()[0] || null;
 
-  // Extract exhausted model names from modelExhausted_* fields
-  const exhaustedModels = Object.entries(connection)
-    .filter(([k, v]) => k.startsWith("modelExhausted_") && v === true)
-    .map(([k]) => k.replace("modelExhausted_", ""))
-    .sort();
-
   useEffect(() => {
+    let t = null;
     const check = () => {
       const until = Object.entries(connection)
         .filter(([k]) => k.startsWith("modelLock_") || k.startsWith("modelExhausted_"))
@@ -80,9 +75,11 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
       setIsCooldown(!!until);
     };
     check();
-    const t = modelLockUntil ? setInterval(check, 1000) : null;
+    if (modelLockUntil) {
+      t = setInterval(check, 1000);
+    }
     return () => { if (t) clearInterval(t); };
-  }, [modelLockUntil]);
+  }, [modelLockUntil, connection]);
 
   useEffect(() => {
     if (!showProxyDropdown) return;
@@ -128,11 +125,6 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
             </Badge>
             {hasAnyProxy && <Badge variant={proxyBadgeVariant} size="sm">Proxy</Badge>}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
-            {exhaustedModels.length > 0 && connection.isActive !== false && (
-              <span className="max-w-full truncate text-xs text-amber-500 sm:max-w-[300px]" title={`Quota exhausted: ${exhaustedModels.join(', ')}`}>
-                ⚠️ Limit: {exhaustedModels.slice(0, 3).join(', ')}{exhaustedModels.length > 3 ? ` +${exhaustedModels.length - 3} more` : ''}
-              </span>
-            )}
             {connection.lastError && connection.isActive !== false && (
               <span className="text-xs text-red-500 truncate max-w-[300px]" title={connection.lastError}>{connection.lastError}</span>
             )}
@@ -183,29 +175,6 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
     </div>
   );
 }
-
-ConnectionRow.propTypes = {
-  connection: PropTypes.shape({
-    id: PropTypes.string,
-    name: PropTypes.string,
-    email: PropTypes.string,
-    displayName: PropTypes.string,
-    testStatus: PropTypes.string,
-    isActive: PropTypes.bool,
-    lastError: PropTypes.string,
-    priority: PropTypes.number,
-  }).isRequired,
-  proxyPools: PropTypes.array,
-  isOAuth: PropTypes.bool.isRequired,
-  isFirst: PropTypes.bool.isRequired,
-  isLast: PropTypes.bool.isRequired,
-  onMoveUp: PropTypes.func.isRequired,
-  onMoveDown: PropTypes.func.isRequired,
-  onToggleActive: PropTypes.func.isRequired,
-  onUpdateProxy: PropTypes.func,
-  onEdit: PropTypes.func.isRequired,
-  onDelete: PropTypes.func.isRequired,
-};
 
 // ── AddApiKeyModal ─────────────────────────────────────────────
 function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, onClose }) {
@@ -298,14 +267,6 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
   );
 }
 
-AddApiKeyModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  provider: PropTypes.string,
-  providerName: PropTypes.string,
-  proxyPools: PropTypes.array,
-  onSave: PropTypes.func.isRequired,
-  onClose: PropTypes.func.isRequired,
-};
 
 // ── ConnectionsCard ────────────────────────────────────────────
 // Self-contained card: fetches, displays and manages all connections for a provider.
@@ -339,7 +300,8 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     finally { setLoading(false); }
   }, [providerId]);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => { /* eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap fetch on mount and when providerId changes. */
+    fetch_(); }, [fetch_]);
 
   const saveStrategy = async (strategy, stickyLimit) => {
     try {
@@ -448,7 +410,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
           </div>
         ) : (
           <>
-            <div className="flex flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03] max-h-[500px] overflow-y-auto pr-1">
+            <div className="flex flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
               {connections.map((conn, idx) => (
                 <ConnectionRow
                   key={conn.id}
@@ -501,7 +463,3 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   );
 }
 
-ConnectionsCard.propTypes = {
-  providerId: PropTypes.string.isRequired,
-  isOAuth: PropTypes.bool,
-};

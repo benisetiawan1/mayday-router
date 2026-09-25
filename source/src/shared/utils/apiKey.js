@@ -1,6 +1,40 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
-const API_KEY_SECRET = process.env.API_KEY_SECRET || "endpoint-proxy-api-key-secret";
+function getDataDir() {
+  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  return process.platform === "win32"
+    ? path.join(process.env.APPDATA || os.homedir(), "9router")
+    : path.join(os.homedir(), ".9router");
+}
+
+function getApiKeySecret() {
+  const secret = process.env.API_KEY_SECRET;
+  if (secret) return secret;
+
+  const dataDir = getDataDir();
+  const secretPath = path.join(dataDir, "auth", "api-key-secret");
+
+  try {
+    const stored = fs.readFileSync(secretPath, "utf8").trim();
+    if (stored) {
+      process.env.API_KEY_SECRET = stored;
+      return stored;
+    }
+  } catch {}
+
+  const newSecret = crypto.randomBytes(32).toString("hex");
+
+  try {
+    fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+    fs.writeFileSync(secretPath, newSecret, { mode: 0o600 });
+  } catch {}
+
+  process.env.API_KEY_SECRET = newSecret;
+  return newSecret;
+}
 
 /**
  * Generate 6-char random keyId
@@ -19,7 +53,7 @@ function generateKeyId() {
  */
 function generateCrc(machineId, keyId) {
   return crypto
-    .createHmac("sha256", API_KEY_SECRET)
+    .createHmac("sha256", getApiKeySecret())
     .update(machineId + keyId)
     .digest("hex")
     .slice(0, 8);

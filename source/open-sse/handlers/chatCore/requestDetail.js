@@ -24,19 +24,15 @@ export function extractRequestConfig(body, stream) {
 export function extractUsageFromResponse(responseBody) {
   if (!responseBody || typeof responseBody !== "object") return null;
 
-  // Claude format
-  // Note: OpenAI Responses usage ({input_tokens, input_tokens_details:{cached_tokens}})
-  // also matches this branch. Its prompt is cache-INCLUSIVE and its cache rides in
-  // input_tokens_details, so emit it as cached_tokens — the convention
-  // canonicalizeUsage() passes through without folding. Reading it here keeps
-  // cache accounting correct for /v1/responses and codex traffic.
+  // Claude / Responses API format (input_tokens / output_tokens)
   if (responseBody.usage?.input_tokens !== undefined) {
+    const u = responseBody.usage;
     return {
-      prompt_tokens: responseBody.usage.input_tokens || 0,
-      completion_tokens: responseBody.usage.output_tokens || 0,
-      cached_tokens: responseBody.usage.cached_tokens ?? responseBody.usage.input_tokens_details?.cached_tokens,
-      cache_read_input_tokens: responseBody.usage.cache_read_input_tokens,
-      cache_creation_input_tokens: responseBody.usage.cache_creation_input_tokens
+      prompt_tokens: u.input_tokens || 0,
+      completion_tokens: u.output_tokens || 0,
+      cache_read_input_tokens: u.cache_read_input_tokens,
+      cache_creation_input_tokens: u.cache_creation_input_tokens,
+      cached_tokens: u.input_tokens_details?.cached_tokens ?? u.cached_tokens
     };
   }
 
@@ -45,19 +41,36 @@ export function extractUsageFromResponse(responseBody) {
     return {
       prompt_tokens: responseBody.usage.prompt_tokens || 0,
       completion_tokens: responseBody.usage.completion_tokens || 0,
-      cached_tokens: responseBody.usage.cached_tokens ?? responseBody.usage.prompt_tokens_details?.cached_tokens,
+      cached_tokens: responseBody.usage.prompt_tokens_details?.cached_tokens,
       reasoning_tokens: responseBody.usage.completion_tokens_details?.reasoning_tokens
     };
   }
 
-  // Gemini format. Antigravity / gemini-cli wrap the payload in { response: {...} }.
-  const usageMetadata = responseBody.usageMetadata || responseBody.response?.usageMetadata;
-  if (usageMetadata) {
+  // Gemini / Antigravity format
+  // Antigravity wraps usageMetadata inside response:
+  //   { response: { candidates: [...], usageMetadata: {...} } }
+  // Without the unwrap, non-stream Antigravity requests land as 0/0 in
+  // requestDetails (and disappear from Recent Requests which filters
+  // zero-token rows). Streaming path already unwraps this in
+  // usageTracking.js; non-stream route uses a different function.
+  const usageMeta = responseBody.usageMetadata || responseBody.response?.usageMetadata;
+  if (usageMeta && typeof usageMeta === "object") {
+    const thoughts = usageMeta.thoughtsTokenCount || 0;
+    const candidates = usageMeta.candidatesTokenCount || 0;
+    // Derive candidates from total when upstream omits it
+    let completion = candidates;
+    const total = usageMeta.totalTokenCount || 0;
+    const prompt = usageMeta.promptTokenCount || 0;
+    if (completion === 0 && total > 0) {
+      completion = Math.max(0, total - prompt - thoughts);
+    }
     return {
-      prompt_tokens: usageMetadata.promptTokenCount || 0,
-      completion_tokens: usageMetadata.candidatesTokenCount || 0,
-      cached_tokens: usageMetadata.cachedContentTokenCount || 0,
-      reasoning_tokens: usageMetadata.thoughtsTokenCount || 0
+      prompt_tokens: prompt,
+      // Fold thoughts into completion so saveUsageStats (which only reads
+      // prompt/completion) doesn't drop reasoning-heavy AG responses as 0 out.
+      completion_tokens: completion + thoughts,
+      cached_tokens: usageMeta.cachedContentTokenCount || 0,
+      reasoning_tokens: thoughts
     };
   }
 
@@ -69,6 +82,8 @@ export function buildRequestDetail(base, overrides = {}) {
     provider: base.provider || "unknown",
     model: base.model || "unknown",
     connectionId: base.connectionId || undefined,
+    apiKey: base.apiKey || null,
+    apiKeyName: base.apiKeyName || null,
     timestamp: new Date().toISOString(),
     latency: base.latency || { ttft: 0, total: 0 },
     tokens: base.tokens || { prompt_tokens: 0, completion_tokens: 0 },
@@ -82,25 +97,7 @@ export function buildRequestDetail(base, overrides = {}) {
   };
 }
 
-// Build the "done" summary: duration, ttft, in/out tokens with cache breakdown
-export function formatDoneLine({ usage, latency }) {
-  const u = usage || {};
-  const inTok = u.prompt_tokens ?? u.input_tokens ?? 0;
-  const outTok = u.completion_tokens ?? u.output_tokens ?? 0;
-  const cacheRead = u.cache_read_input_tokens ?? u.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0;
-  const cacheCreate = u.cache_creation_input_tokens ?? 0;
-  let inStr = `IN ${inTok}`;
-  if (cacheRead || cacheCreate) {
-    const parts = [];
-    if (cacheRead) parts.push(`↻${cacheRead}`);
-    if (cacheCreate) parts.push(`+${cacheCreate}`);
-    inStr += ` (CACHE ${parts.join(" ")})`;
-  }
-  const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
-  return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
-}
-
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE" }) {
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -108,11 +105,9 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
 
   if (inTokens === 0 && outTokens === 0) return;
 
-  if (!silent) {
-    const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
-    console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
-  }
+  const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
+  console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
 
   // Canonicalize to one storage convention (prompt_tokens cache-inclusive) so
   // cached/cache-creation tokens survive to cost calc + stats. See canonicalizeUsage.

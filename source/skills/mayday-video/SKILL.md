@@ -1,11 +1,11 @@
 ---
-name: mayday-video
+name: 9router-video
 description: Generate videos via 9Router /v1/videos/generations using xAI Grok Imagine (grok-imagine-video). Async job flow - submit, poll request_id until done, download MP4. Use when the user wants to create, generate, or render a video, text-to-video (txt2vid), or image-to-video.
 ---
 
 # 9Router — Video Generation (xAI Grok Imagine)
 
-Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday/SKILL.md for setup.
+Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See ../9router/SKILL.md for setup.
 
 Requires a connected **xAI account** in the 9Router dashboard — either **Grok Build OAuth** (SuperGrok / X Premium+ subscription sign-in) or a direct **xAI API key** from console.x.ai. The two are separate auth types with separate billing; the dashboard shows which one each connection uses.
 
@@ -60,7 +60,7 @@ Download: fetch `video.url` from the `done` response.
 ## CLI one-shot
 
 ```bash
-mayday xai video \
+9router xai video \
   --prompt "A cinematic tracking shot through a neon city at night" \
   --output video.mp4
 # options: --model --duration --aspect-ratio --resolution --image --timeout --port --api-key

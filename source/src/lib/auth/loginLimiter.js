@@ -47,8 +47,7 @@ export function recordSuccess(ip) {
 }
 
 export function getClientIp(request) {
-  // Trusted only when custom-server.js proves it stamped the header from the TCP socket;
-  // otherwise a client could rotate the value to escape its own lockout bucket.
+  // Trusted: set from TCP socket by custom-server.js (client cannot spoof).
   if (hasTrustedPeerHeaders(request)) {
     const realIp = request.headers.get("x-9r-real-ip");
     if (realIp) return realIp;

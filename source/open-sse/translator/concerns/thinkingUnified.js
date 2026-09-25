@@ -3,7 +3,6 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
-import { getThinkingLevels } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 
@@ -38,7 +37,6 @@ export function parseSuffix(model) {
   const raw = m[2].trim().toLowerCase();
   if (raw === "none" || raw === "off") return { cleanModel, override: { mode: "none" } };
   if (raw === "auto") return { cleanModel, override: { mode: "auto" } };
-  if (raw === "ultra") return { cleanModel, override: { mode: "level", level: raw } };
   if (/^\d+$/.test(raw)) return { cleanModel, override: { mode: "budget", budget: Number(raw) } };
   if (LEVEL_TO_BUDGET[raw] !== undefined) return { cleanModel, override: { mode: "level", level: raw } };
   return { cleanModel, override: null };
@@ -105,16 +103,12 @@ export function extractThinking(body) {
 // at the call-site where intent is snapshotted before format translation.
 export const captureThinking = extractThinking;
 
-const NATIVE_ONLY_FORMATS = new Set(["gemini-level", "gemini-budget", "claude-budget", "claude-adaptive", "kiro"]);
-
+// Resolve thinking format: provider override > capability > derive(targetFormat).
 function resolveFormat(targetFormat, model, provider) {
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
   const caps = getCapabilitiesForModel(provider, model);
-  const isOpenAIWire = targetFormat === "openai" || targetFormat === "openai-responses";
-  if (caps.thinkingFormat && !(isOpenAIWire && NATIVE_ONLY_FORMATS.has(caps.thinkingFormat))) {
-    return caps.thinkingFormat;
-  }
+  if (caps.thinkingFormat) return caps.thinkingFormat;
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
 }
 
@@ -138,13 +132,6 @@ function toLevel(cfg) {
   if (cfg.mode === "budget") return budgetToLevel(cfg.budget) || "medium";
   if (cfg.mode === "auto") return "auto";
   return null;
-}
-
-function normalizeOpenAILevel(level, supportedLevels) {
-  if (level !== "max" && level !== "ultra") return level;
-  if (supportedLevels?.includes(level)) return level;
-  if (level === "ultra" && supportedLevels?.includes("max")) return "max";
-  return "xhigh";
 }
 
 function toGeminiThinkingLevel(cfg) {
@@ -226,7 +213,7 @@ function stripAll(body) {
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, supportedLevels) {
+function applyFormat(fmt, body, cfg, caps) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -236,17 +223,20 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels) {
     case "openai": {
       if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);
-      if (level) body.reasoning_effort = normalizeOpenAILevel(level, supportedLevels);
+      // OpenAI reasoning_effort enum caps at "xhigh" (no "max"); clamp Claude Code's "max".
+      if (level) body.reasoning_effort = level === "max" ? "xhigh" : level;
       break;
     }
     case "claude-adaptive": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      // Models that can disable thinking need the explicit adaptive switch.
-      // Permanently adaptive models such as Fable 5.1 accept effort directly.
-      if (canDisable) body.thinking = { type: "adaptive" };
-      else delete body.thinking;
+      // output_config.effort alone does NOT turn thinking on: Anthropic requires
+      // an explicit thinking:{type:"adaptive"} on Opus 4.6/4.7/4.8 and Sonnet 4.6
+      // ("thinking is off unless you explicitly set it"), and Anthropic-compatible
+      // shims (e.g. GitHub Copilot /v1/messages) default thinking off even for
+      // Sonnet 5. Send both fields — the documented adaptive-thinking shape.
+      body.thinking = { type: "adaptive" };
       const level = toLevel(eff);
-      body.output_config = { effort: level === "xhigh" || level === "auto" ? "high" : level };
+      body.output_config = { effort: level === "xhigh" ? "high" : level };
       break;
     }
     case "claude-budget": {
@@ -324,15 +314,6 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels) {
       if (level) body.reasoning_effort = level === "xhigh" || level === "max" ? "high" : level;
       break;
     }
-    case "tokenrouter": {
-      // TokenRouter's reasoning_effort enum is low/medium/high/xhigh/max — it rejects
-      // "none"/"auto" with a 400 and supports "max" natively (no clamp like openai).
-      // "none" → omit the field so the upstream default applies; pass levels through.
-      if (none || eff.mode === "auto") break;
-      const level = toLevel(eff);
-      if (level) body.reasoning_effort = level;
-      break;
-    }
     case "kiro":
       // Kiro thinking handled via system-tag injection in openai-to-kiro.js; no body field here.
       break;
@@ -357,11 +338,28 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
     stripAll(body);
     return body;
   }
-  if (!cfg) return body;
-
   const fmt = resolveFormat(targetFormat, cleanModel, provider);
-  const supportedLevels = getThinkingLevels(provider, cleanModel);
+  // AgentRouter proxies GLM-5.x through a Claude-format transport, but the
+  // upstream GLM-5.x defaults thinking ON when no reasoning config is sent.
+  // If the client did not explicitly request reasoning, force-disable it so
+  // reasoning content does not leak into the OpenAI-format response.
+  // Scoped to agentrouter only — native glm/Z.ai should not be affected.
+  const effectiveCfg = cfg || (provider === "agentrouter" && /^glm-5/i.test(cleanModel) && caps.thinkingCanDisable !== false ? { mode: "none" } : null);
+
+  // No explicit thinking intent from client — but reasoning-capable Gemini/Antigravity
+  // models auto-think server-side (tokens still billed in usage). Force includeThoughts:true
+  // on gemini formats so the thought parts stream back to the client instead of being
+  // hidden behind only the reasoning_tokens usage counter.
+  if (!effectiveCfg) {
+    const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
+    const resolvedFmt = providerFmt || (caps.thinkingFormat) || (fmt);
+    if (resolvedFmt === "gemini-budget" || resolvedFmt === "gemini-level") {
+      setGeminiThinking(body, { thinkingBudget: -1, includeThoughts: true });
+    }
+    return body;
+  }
+
   stripAll(body);
-  applyFormat(fmt, body, cfg, caps, supportedLevels);
+  applyFormat(fmt, body, effectiveCfg, caps);
   return body;
 }

@@ -1,23 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import PropTypes from "prop-types";
-import { Button, Modal, Toggle } from "@/shared/components";
-import { CAPACITY_META } from "@/shared/constants/models";
+import { useState, useReducer } from "react";
+import { Button, Modal } from "@/shared/components";
 
-const defaultCaps = () => Object.fromEntries(Object.keys(CAPACITY_META).map((key) => [key, false]));
+function modalReducer(state, action) {
+  switch (action.type) {
+    case "RESET": return { modelId: "", testStatus: null, testError: "", saving: false };
+    case "SET_MODEL": return { ...state, modelId: action.value, testStatus: null, testError: "" };
+    case "TEST_START": return { ...state, testStatus: "testing", testError: "" };
+    case "TEST_RESULT": return { ...state, testStatus: action.ok ? "ok" : "error", testError: action.error || "" };
+    case "SAVE_START": return { ...state, saving: true };
+    case "SAVE_DONE": return { ...state, saving: false };
+    default: return state;
+  }
+}
 
 export default function AddCustomModelModal({ isOpen, providerAlias, providerDisplayAlias, onSave, onClose }) {
-  const [modelId, setModelId] = useState("");
-  const [caps, setCaps] = useState(defaultCaps);
-  const [testStatus, setTestStatus] = useState(null); // null | "testing" | "ok" | "error"
-  const [testError, setTestError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [state, dispatch] = useReducer(modalReducer, { modelId: "", testStatus: null, testError: "", saving: false });
+  const { modelId, testStatus, testError, saving } = state;
+  const [prevIsOpen, setPrevIsOpen] = useState(false);
 
-  // Reset state when modal opens
-  useEffect(() => {
-    if (isOpen) { setModelId(""); setCaps(defaultCaps()); setTestStatus(null); setTestError(""); }
-  }, [isOpen]);
+  // Reset state when modal opens (prev-prop pattern — no extra render cycle)
+  if (isOpen && !prevIsOpen) {
+    setPrevIsOpen(true);
+    dispatch({ type: "RESET" });
+  } else if (!isOpen && prevIsOpen) {
+    setPrevIsOpen(false);
+  }
 
   // Strip provider's own alias prefix (e.g. "cc/model" -> "model" for cc provider)
   const stripAlias = (id) => {
@@ -28,8 +37,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   const handleTest = async () => {
     const cleanId = stripAlias(modelId.trim());
     if (!cleanId) return;
-    setTestStatus("testing");
-    setTestError("");
+    dispatch({ type: "TEST_START" });
     try {
       const res = await fetch("/api/models/test", {
         method: "POST",
@@ -37,22 +45,20 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
         body: JSON.stringify({ model: `${providerAlias}/${cleanId}` }),
       });
       const data = await res.json();
-      setTestStatus(data.ok ? "ok" : "error");
-      setTestError(data.error || "");
+      dispatch({ type: "TEST_RESULT", ok: data.ok, error: data.error });
     } catch (err) {
-      setTestStatus("error");
-      setTestError(err.message);
+      dispatch({ type: "TEST_RESULT", ok: false, error: err.message });
     }
   };
 
   const handleSave = async () => {
     const cleanId = stripAlias(modelId.trim());
     if (!cleanId || saving) return;
-    setSaving(true);
+    dispatch({ type: "SAVE_START" });
     try {
-      await onSave(cleanId, caps);
+      await onSave(cleanId);
     } finally {
-      setSaving(false);
+      dispatch({ type: "SAVE_DONE" });
     }
   };
 
@@ -64,16 +70,16 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     <Modal isOpen={isOpen} onClose={onClose} title="Add Custom Model">
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-sm font-medium mb-1.5 block">Model ID</label>
+          <label htmlFor="add-custom-model-id" className="text-sm font-medium mb-1.5 block">Model ID</label>
           <div className="flex gap-2">
             <input
+              id="add-custom-model-id"
               type="text"
               value={modelId}
-              onChange={(e) => { setModelId(e.target.value); setTestStatus(null); setTestError(""); }}
+              onChange={(e) => dispatch({ type: "SET_MODEL", value: e.target.value })}
               onKeyDown={handleKeyDown}
               placeholder="e.g. claude-opus-4-5"
               className="flex-1 px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              autoFocus
             />
             <Button
               variant="secondary"
@@ -88,22 +94,6 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           <p className="text-xs text-text-muted mt-1">
             Sent to provider as: <code className="font-mono bg-sidebar px-1 rounded">{stripAlias(modelId.trim()) || "model-id"}</code>
           </p>
-        </div>
-
-        <div>
-          <label className="text-sm font-medium mb-1.5 block">Capabilities</label>
-          <div className="flex flex-wrap gap-4">
-            {Object.entries(CAPACITY_META).map(([key, meta]) => (
-              <Toggle
-                key={key}
-                checked={!!caps[key]}
-                onChange={(v) => setCaps((prev) => ({ ...prev, [key]: v }))}
-                label={meta.label}
-                description={meta.desc}
-                size="sm"
-              />
-            ))}
-          </div>
         </div>
 
         {/* Test result */}
@@ -136,10 +126,3 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   );
 }
 
-AddCustomModelModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  providerAlias: PropTypes.string.isRequired,
-  providerDisplayAlias: PropTypes.string.isRequired,
-  onSave: PropTypes.func.isRequired,
-  onClose: PropTypes.func.isRequired,
-};

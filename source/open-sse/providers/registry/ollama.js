@@ -15,8 +15,6 @@ export default {
     },
   },
   category: "freeTier",
-  authType: "apikey",
-  authModes: ["apikey"],
   transport: {
     baseUrl: "https://ollama.com/api/chat",
     validateUrl: "https://ollama.com/api/tags",
@@ -31,18 +29,8 @@ export default {
     { id: "qwen3.5", name: "Qwen3.5" },
     { id: "minimax-m3", name: "MiniMax M3" },
   ],
-  serviceKinds: ["llm", "webFetch"],
-  fetchConfig: {
-    baseUrl: "https://ollama.com/api/web_fetch",
-    method: "POST",
-    authType: "apikey",
-    authHeader: "bearer",
-    formats: ["markdown"],
-    maxCharacters: 200000,
-    timeoutMs: 30000,
-  },
+  serviceKinds: ["llm"],
   features: {
     usage: true,
-    usageApikey: true,
   },
 };

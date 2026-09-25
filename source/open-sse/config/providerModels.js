@@ -3,8 +3,8 @@ import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
 import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, normalizeModelId } from "../providers/models/schema.js";
-import { CODEX_REVIEW_SUFFIX, isMuseSparkModel } from "../providers/models/helpers.js";
-import { FORMATS } from "../translator/formats.js";
+import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
+
 export { PROVIDER_MODELS };
 
 
@@ -50,20 +50,14 @@ export function findModelName(aliasOrId, modelId) {
 }
 
 export function getModelTargetFormat(aliasOrId, modelId) {
-  if ((!aliasOrId || aliasOrId === "oc" || aliasOrId === "opencode" || aliasOrId === "ocg" || aliasOrId === "opencode-go") && isMuseSparkModel(modelId)) {
-    return FORMATS.OPENAI_RESPONSES;
-  }
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
   return modelTargetFormat(findModel(models, modelId, aliasOrId));
 }
 
-// Declared upstream formats for a model (registry `supportedFormats`). Drives the
-// per-model guard on the sourceFormat-matched transport; null when undeclared.
 export function getModelSupportedFormats(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
-  if (!models) return null;
-  return modelSupportedFormats(findModel(models, modelId, aliasOrId));
+  return models ? modelSupportedFormats(findModel(models, modelId, aliasOrId)) : null;
 }
 
 export function getModelType(aliasOrId, modelId) {
@@ -74,24 +68,19 @@ export function getModelType(aliasOrId, modelId) {
 }
 
 export function getModelUpstreamId(aliasOrId, modelId) {
-  // Split off thinking suffix "(level)" so lookup hits the base id; re-append it to
-  // the result so downstream applyThinking still sees the suffix (body.model is stripped separately).
-  const sufMatch = typeof modelId === "string" ? modelId.match(/\([^()]+\)\s*$/) : null;
-  const suffix = sufMatch ? sufMatch[0] : "";
-  const baseId = suffix ? modelId.slice(0, sufMatch.index).trim() : modelId;
   const models = PROVIDER_MODELS[aliasOrId];
-  const found = findModel(models, baseId, aliasOrId);
-  const resolvedId = found?.upstreamModelId || found?.id;
-  if (resolvedId) {
-    const presetMatch = resolvedId.match(/\([^()]+\)\s*$/);
-    const presetSuffix = presetMatch?.[0] || "";
-    const resolvedBase = presetSuffix ? resolvedId.slice(0, presetMatch.index).trim() : resolvedId;
-    return resolvedBase + (suffix || presetSuffix);
+  const found = findModel(models, modelId, aliasOrId);
+  if (found?.upstreamModelId) return found.upstreamModelId;
+  if (found?.id) return found.id;
+  if (aliasOrId === "cx" && typeof modelId === "string" && modelId.endsWith(CODEX_REVIEW_SUFFIX)) {
+    return modelId.slice(0, -CODEX_REVIEW_SUFFIX.length);
   }
-  if (aliasOrId === "cx" && typeof baseId === "string" && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
-    return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length) + suffix;
-  }
-  return baseId + suffix;
+  return modelId;
+}
+
+export function resolveAntigravityUpstreamModel(model) {
+  const upstream = getModelUpstreamId("ag", model) || model;
+  return upstream.replace(/-tiered\([^)]*\)$/, "-tiered");
 }
 
 export function getModelQuotaFamily(aliasOrId, modelId) {

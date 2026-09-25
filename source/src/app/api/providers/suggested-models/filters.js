@@ -1,8 +1,20 @@
 // Free OpenCode models that don't use the "-free" id suffix
 const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
 
-// Upstream returns "Model is unavailable" for this id (2026-09-02) — re-enable when fixed
-const DEAD_FREE_OPENCODE_MODELS = new Set(["deepseek-v4-flash-free"]);
+// NVIDIA NIM free-tier models whitelist.
+// This is statically defined to prevent Next.js standalone dependency-splitting failures
+// where the import of PROVIDERS from open-sse registry yields an empty object in production.
+const NVIDIA_FREE_MODEL_IDS = new Set([
+  "minimaxai/minimax-m2.7",
+  "minimaxai/minimax-m3",
+  "z-ai/glm-5.1",
+  "z-ai/glm-5.2",
+  "deepseek-ai/deepseek-v4-pro",
+  "deepseek-ai/deepseek-v4-flash",
+  "moonshotai/kimi-k2.6",
+  "nvidia/nemotron-3-ultra-550b-a55b",
+  "nvidia/nv-embedqa-e5-v5"
+]);
 
 export const FILTERS = {
   "openrouter-free": (models) =>
@@ -18,7 +30,7 @@ export const FILTERS = {
 
   "opencode-free": (models) =>
     models
-      .filter((m) => (m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id)) && !DEAD_FREE_OPENCODE_MODELS.has(m.id))
+      .filter((m) => m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id))
       .map((m) => ({ id: m.id, name: m.id })),
 
   // models.dev returns a large catalog; keep only mimo models
@@ -26,4 +38,26 @@ export const FILTERS = {
     (Array.isArray(models) ? models : [])
       .filter((m) => m.id?.startsWith("mimo") || m.name?.toLowerCase().includes("mimo"))
       .map((m) => ({ id: m.id, name: m.name || m.id })),
+
+  // NVIDIA NIM: filter only free-tier models by ID whitelist.
+  // The NVIDIA /v1/models endpoint does not expose pricing/is_free fields,
+  // so we cannot filter server-side. Whitelist is the source of truth.
+  "nvidia-free": (models) =>
+    (Array.isArray(models) ? models : [])
+      .filter((m) => m.id && NVIDIA_FREE_MODEL_IDS.has(m.id))
+      .map((m) => {
+        // Friendly display mapping for whitelisted models
+        const friendlyNames = {
+          "minimaxai/minimax-m2.7": "MiniMax M2.7",
+          "minimaxai/minimax-m3": "MiniMax M3",
+          "z-ai/glm-5.1": "GLM 5.1",
+          "z-ai/glm-5.2": "GLM 5.2",
+          "deepseek-ai/deepseek-v4-pro": "DeepSeek V4 Pro",
+          "deepseek-ai/deepseek-v4-flash": "DeepSeek V4 Flash",
+          "moonshotai/kimi-k2.6": "Kimi K2.6",
+          "nvidia/nemotron-3-ultra-550b-a55b": "Nemotron 3 Ultra",
+          "nvidia/nv-embedqa-e5-v5": "NV EmbedQA E5 v5"
+        };
+        return { id: m.id, name: friendlyNames[m.id] || m.id };
+      }),
 };

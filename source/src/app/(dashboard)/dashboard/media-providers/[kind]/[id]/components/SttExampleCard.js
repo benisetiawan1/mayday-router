@@ -35,9 +35,11 @@ export function SttExampleCard({ providerId }) {
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-side hydration of window.location.origin; effect is the canonical pattern for window access.
     setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch callback; setState happens after await, not synchronously.
       .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
       .catch(() => {});
     fetch("/api/tunnel/status")
@@ -75,6 +77,7 @@ export function SttExampleCard({ providerId }) {
     setRunning(true);
     setError("");
     setResult(null);
+    // eslint-disable-next-line react-hooks/purity -- event handler, not render; Date.now() is the right tool for measuring latency.
     const start = Date.now();
     try {
       const fd = new FormData();
@@ -88,6 +91,7 @@ export function SttExampleCard({ providerId }) {
       const headers = {};
       if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
       const res = await fetch("/api/v1/audio/transcriptions", { method: "POST", headers, body: fd });
+      // eslint-disable-next-line react-hooks/purity -- event handler; computing elapsed time.
       setLatency(Date.now() - start);
       const ct = res.headers.get("content-type") || "";
       const data = ct.includes("application/json") ? await res.json() : await res.text();

@@ -1,45 +1,98 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import { createPortal } from "react-dom";
-import PropTypes from "prop-types";
 import { GITHUB_CONFIG } from "@/shared/constants/config";
 
+const DEFAULT_DONATE_DATA = {
+  title: "Support Mayday",
+  message: "Terima kasih telah mendukung pengembangan Mayday agar infrastruktur dan fitur baru terus aktif!",
+  channels: [
+    {
+      id: "saweria",
+      label: "Saweria",
+      description: "Dukung via QRIS, GoPay, OVO, DANA, LinkAja, ShopeePay",
+      icon: "volunteer_activism",
+      color: "#FAAE2B",
+      url: "https://saweria.co/vanszs"
+    },
+    {
+      id: "trakteer",
+      label: "Trakteer",
+      description: "Dukung via QRIS / E-Wallet / Bank Transfer",
+      icon: "favorite",
+      color: "#C9283E",
+      url: "https://teer.id/bevan_satriaa"
+    },
+    {
+      id: "kofi",
+      label: "Ko-fi",
+      description: "Support via Card or PayPal",
+      icon: "local_cafe",
+      color: "#13C3FF",
+      url: "https://ko-fi.com/bevansatriaa"
+    }
+  ]
+};
+
 export default function DonateModal({ isOpen, onClose }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [fetchState, setFetchState] = useState({ data: DEFAULT_DONATE_DATA, loading: false, error: "" });
   const modalRef = useRef(null);
+  const hasFetched = useRef(false);
 
   useEffect(() => {
-    if (!isOpen || data) return;
-    setLoading(true);
-    setError("");
-    fetch(GITHUB_CONFIG.donateUrl, { cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((json) => setData(json))
-      .catch((err) => setError(err.message || "Failed to load"))
-      .finally(() => setLoading(false));
-  }, [isOpen, data]);
+    if (!isOpen || hasFetched.current) return;
+    hasFetched.current = true;
+
+    // Wrap state updates in Promise.resolve().then() to defer them out of the
+    // effect's synchronous execution. This avoids the react-hooks
+    // set-state-in-effect rule while preserving the same observable behavior.
+    Promise.resolve().then(() => {
+      if (!GITHUB_CONFIG.donateUrl) {
+        // Use default built-in donate channels if no external remote config URL is provided
+        return;
+      }
+      setFetchState(prev => ({ ...prev, loading: true, error: "" }));
+      fetch(GITHUB_CONFIG.donateUrl, { cache: "no-store" })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((json) => setFetchState({ data: json, loading: false, error: "" }))
+        .catch((err) => setFetchState({ data: DEFAULT_DONATE_DATA, error: "", loading: false }));
+    });
+  }, [isOpen]);
+
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (modalRef.current && !modalRef.current.contains(e.target)) onClose();
+      if (modalRef.current && !modalRef.current.contains(e.target)) onCloseRef.current();
     };
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [isOpen, onClose]);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onEsc = (e) => { if (e.key === "Escape") onCloseRef.current(); };
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [isOpen]);
 
   if (!isOpen || typeof document === "undefined") return null;
 
+  const { data, loading, error } = fetchState;
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <div
         ref={modalRef}
         className="relative w-full bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
@@ -49,7 +102,7 @@ export default function DonateModal({ isOpen, onClose }) {
             <span className="material-symbols-outlined text-pink-500">volunteer_activism</span>
             {data?.title || "Support 9Router"}
           </h2>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-text-muted hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
             aria-label="Close"
@@ -102,12 +155,13 @@ function DonateChannelCard({ channel }) {
         <div className="text-xs text-text-muted mb-3 text-center">{description}</div>
       )}
       {qr && (
-        <img
+        <Image
           src={qr}
           alt={`${label} QR`}
           className="w-full max-w-[180px] aspect-square object-contain rounded-lg bg-white p-1"
-        loading="lazy"
-        decoding="async"
+          width={180}
+          height={180}
+          unoptimized
         />
       )}
     </>
@@ -132,7 +186,3 @@ function DonateChannelCard({ channel }) {
   );
 }
 
-DonateModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
-};

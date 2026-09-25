@@ -3,14 +3,15 @@ import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, refreshCodexToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
-import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
-import { getModelsByProviderId } from "open-sse/config/providerModels.js";
+import { resolveOllamaLocalHost, getStaticProviderModels } from "open-sse/config/providers.js";
+import { PROVIDERS, PROVIDER_OAUTH } from "open-sse/providers/index.js";
+import { deriveValidateUrl } from "open-sse/providers/schema.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
-import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
+import { getKimchiUserAgent } from "open-sse/utils/kimchiUserAgent.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -29,21 +30,18 @@ const parseOpenAIStyleModels = (data) => {
 const parseGeminiCliModels = (data) => {
   if (Array.isArray(data?.models)) {
     return data.models
-      .map((item) => {
+      .flatMap((item) => {
         const id = item?.id || item?.model || item?.name;
-        if (!id) return null;
-        return { id, name: item?.displayName || item?.name || id };
-      })
-      .filter(Boolean);
+        if (!id) return [];
+        return [{ id, name: item?.displayName || item?.name || id }];
+      });
   }
 
   if (data?.models && typeof data.models === "object") {
-    return Object.entries(data.models)
-      .filter(([, info]) => !info?.isInternal)
-      .map(([id, info]) => ({
-        id,
-        name: info?.displayName || info?.name || id,
-      }));
+    return Object.entries(data.models).reduce((acc, [id, info]) => {
+      if (!info?.isInternal) acc.push({ id, name: info?.displayName || info?.name || id });
+      return acc;
+    }, []);
   }
 
   return [];
@@ -70,21 +68,27 @@ const appendCodexReviewModels = (models) => models.flatMap((model) => {
 
 const parseCodexModels = (data) => appendCodexReviewModels(parseOpenAIStyleModels(data));
 
-const createOpenAIModelsConfig = (url) => ({
+const createOpenAIModelsConfig = (url, regCfg = null) => ({
   url,
   method: "GET",
   headers: { "Content-Type": "application/json" },
-  authHeader: "Authorization",
-  authPrefix: "Bearer ",
+  // Mirror executors/default.js setAuth: registry auth block wins, Bearer default.
+  authHeader: regCfg?.auth?.header || "Authorization",
+  authPrefix: (!regCfg?.auth || regCfg.auth.scheme === "bearer") ? "Bearer " : "",
   parseResponse: parseOpenAIStyleModels
 });
 
-const getStaticProviderModels = (providerId) =>
-  getModelsByProviderId(providerId).map((model) => ({
-    ...model,
-    id: model.id,
-    name: model.name || model.id,
-  }));
+const resolveQwenModelsUrl = (connection) => {
+  const fallback = "https://portal.qwen.ai/v1/models";
+  const raw = connection?.providerSpecificData?.resourceUrl;
+  if (!raw || typeof raw !== "string") return fallback;
+  const value = raw.trim();
+  if (!value) return fallback;
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return `${value.replace(/\/$/, "")}/models`;
+  }
+  return `https://${value.replace(/\/$/, "")}/v1/models`;
+};
 
 // Generic custom resolver for OAuth providers that need refresh-on-401 + token persist.
 // Receives a `fetchFn(token)` and returns parsed models or throws.
@@ -144,6 +148,14 @@ const PROVIDER_MODELS_CONFIG = {
     authQuery: "key", // Use query param for API key
     parseResponse: (data) => data.models || []
   },
+  qwen: {
+    url: "https://portal.qwen.ai/v1/models",
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    parseResponse: (data) => data.data || []
+  },
   codex: {
     customResolver: buildOAuthResolver({
       refreshFn: (conn) => refreshCodexToken(conn.refreshToken),
@@ -184,16 +196,18 @@ const PROVIDER_MODELS_CONFIG = {
     parseResponse: (data) => {
       if (!data?.data) return [];
       // Filter out embeddings, non-chat models, and disabled models
-      return data.data
-        .filter(m => m.capabilities?.type === "chat")
-        .filter(m => m.policy?.state !== "disabled") // Only return explicitly enabled models
-        .map(m => ({
-          id: m.id,
-          name: m.name || m.id,
-          version: m.version,
-          capabilities: m.capabilities,
-          isDefault: m.model_picker_enabled === true
-        }));
+      return data.data.reduce((acc, m) => {
+        if (m.capabilities?.type === "chat" && m.policy?.state !== "disabled") {
+          acc.push({
+            id: m.id,
+            name: m.name || m.id,
+            version: m.version,
+            capabilities: m.capabilities,
+            isDefault: m.model_picker_enabled === true
+          });
+        }
+        return acc;
+      }, []);
     }
   },
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
@@ -258,27 +272,19 @@ const PROVIDER_MODELS_CONFIG = {
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
   kimchi: {
-    customResolver: async (connection) => {
-      const result = await resolveKimchiModels({
-        accessToken: connection.accessToken,
-        apiKey: connection.apiKey,
-        providerSpecificData: connection.providerSpecificData || {},
-      }, { forceRefresh: true, log: console });
-      if (result?.models?.length) {
-        return { models: result.models };
-      }
-      return {
-        models: getStaticProviderModels("kimchi"),
-        warning: "Kimchi returned no live models; falling back to static catalog.",
-      };
-    }
+    url: PROVIDER_OAUTH.kimchi?.modelsUrl,
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    parseResponse: (data) => data?.data || data?.models || [],
   },
   cursor: {
     customResolver: async (connection) => {
       const result = await resolveCursorModels({
         accessToken: connection.accessToken,
         providerSpecificData: connection.providerSpecificData || {},
-      }, { forceRefresh: true, log: console });
+      }, { log: console });
       if (result?.models?.length) return { models: result.models };
       return {
         models: getStaticProviderModels("cursor"),
@@ -344,7 +350,7 @@ const PROVIDER_MODELS_CONFIG = {
       };
       let warning;
       try {
-        const result = await resolveQoderModels(credentials, { forceRefresh: true });
+        const result = await resolveQoderModels(credentials);
         if (result?.models?.length) {
           return {
             models: result.models.map((m) => ({
@@ -413,7 +419,7 @@ const PROVIDER_MODELS_CONFIG = {
       });
       if (result.models.length) return result;
       return {
-        models: getStaticProviderModels("grok-cli"),
+        models: [],
         warning: result.warning || "Grok CLI returned no live models; using static catalog.",
       };
     },
@@ -522,7 +528,14 @@ export async function GET(request, { params }) {
       });
     }
 
-    const config = PROVIDER_MODELS_CONFIG[connection.provider];
+    let config = PROVIDER_MODELS_CONFIG[connection.provider];
+    if (!config) {
+      const regCfg = PROVIDERS[connection.provider];
+      const validateUrl = deriveValidateUrl(regCfg);
+      if (validateUrl && connection.apiKey) {
+        config = createOpenAIModelsConfig(validateUrl, regCfg);
+      }
+    }
     if (!config) {
       return NextResponse.json(
         { error: `Provider ${connection.provider} does not support models listing` },
@@ -552,12 +565,16 @@ export async function GET(request, { params }) {
 
     // Build request URL
     let url = config.url;
+    if (connection.provider === "qwen") {
+      url = resolveQwenModelsUrl(connection);
+    }
     if (config.authQuery) {
       url += `?${config.authQuery}=${token}`;
     }
 
     // Build headers
     const headers = { ...config.headers };
+    if (connection.provider === "kimchi") headers["User-Agent"] = getKimchiUserAgent();
     if (config.authHeader && !config.authQuery) {
       headers[config.authHeader] = (config.authPrefix || "") + token;
     }

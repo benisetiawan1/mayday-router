@@ -4,16 +4,20 @@ import {
   clearAccountError,
   extractApiKey,
   isValidApiKey,
+  isProviderAllowed,
+  isComboAllowed,
+  isKindAllowed,
 } from "../services/auth.js";
-import { getSettings, getCombos } from "@/lib/localDb";
-import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
-import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
-import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
+import { handleComboChat, getComboModelsFromData, stripComboPrefix } from "open-sse/services/combo.js";
+import { getSettings, getCombos } from "@/lib/localDb";
+import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { isModelAllowed } from "../services/allowedModels.js";
+import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -49,13 +53,14 @@ export async function handleFetch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
+  let apiKeyInfo = null;
   if (settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
+    apiKeyInfo = await isValidApiKey(apiKey);
+    if (!apiKeyInfo) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
@@ -64,6 +69,11 @@ export async function handleFetch(request) {
   if (!providerInput || typeof providerInput !== "string") {
     log.warn("FETCH", "Missing provider/model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: provider (or model)");
+  }
+
+  if (!isKindAllowed(apiKeyInfo, "webFetch")) {
+    log.warn("AUTH", "Web fetch kind not allowed for API key");
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "Web fetch requests are not allowed for this API key");
   }
 
   if (!targetUrl || typeof targetUrl !== "string") {
@@ -79,10 +89,9 @@ export async function handleFetch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid URL format");
   }
 
-  // SSRF guard: reject internal/private/metadata targets, including
-  // hostnames that merely resolve to one (DNS lookup, not just literal checks).
+  // SSRF guard: reject internal/private/metadata targets
   try {
-    await assertPublicUrlResolved(targetUrl);
+    await assertPublicUrl(targetUrl);
   } catch (err) {
     log.warn("FETCH", "Blocked URL", { url: targetUrl });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, err.message);
@@ -92,25 +101,31 @@ export async function handleFetch(request) {
   const combos = await getCombos();
   const comboModels = getComboModelsFromData(providerInput, combos);
   if (comboModels) {
+    if (!isComboAllowed(apiKeyInfo, providerInput)) {
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `Combo "${providerInput}" is not allowed for this API key`);
+    }
+    const comboNameFetch = stripComboPrefix(providerInput);
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const comboStrategy = comboStrategies[comboNameFetch]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("FETCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("FETCH", `Combo "${comboNameFetch}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings, apiKeyInfo),
       log,
-      comboName: providerInput,
+      comboName: comboNameFetch,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      timeoutMs: comboStrategies[comboNameFetch]?.targetTimeoutMs ?? null,
+      queueDepth: comboStrategies[comboNameFetch]?.queueDepth ?? null,
     });
   }
 
-  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings, apiKeyInfo);
 }
 
-async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings, apiKeyInfo = null) {
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -126,6 +141,18 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   if (!providerConfig) {
     log.warn("FETCH", "Provider does not support web fetch", { provider: providerId });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Provider ${providerId} does not support web fetch`);
+  }
+
+  if (!(await isProviderAllowed(apiKeyInfo, providerId))) {
+    log.warn("AUTH", `Provider "${providerId}" not allowed for API key`, { provider: providerId });
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider "${providerId}" is not allowed for this API key`);
+  }
+
+  const alias = resolvedProvider.alias || providerId;
+  const fetchModelId = `${alias}/fetch`;
+  if (!(await isModelAllowed(fetchModelId, apiKeyInfo))) {
+    log.warn("FETCH", `Fetch model not in available models list`, { model: fetchModelId });
+    return errorResponse(HTTP_STATUS.NOT_FOUND, `Model "${fetchModelId}" is not available. Only models listed in /v1/models can be used.`);
   }
 
   if (providerInput !== providerId) {
@@ -159,13 +186,8 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   let lastError = null;
   let lastStatus = null;
 
-  // Keep web-fetch failures scoped to this capability. Providers such as
-  // Ollama use the same connection for chat and fetch, so an upstream fetch
-  // failure must not take the account offline for LLM requests.
-  const fetchLockKey = `webfetch:${providerId}`;
-
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds, fetchLockKey);
+    const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
@@ -205,19 +227,13 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     });
 
     if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials, fetchLockKey);
+      await clearAccountError(credentials.connectionId, credentials);
       return new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
     }
 
-    const { shouldFallback } = await markAccountUnavailable(
-      credentials.connectionId,
-      result.status,
-      result.error,
-      providerId,
-      fetchLockKey,
-    );
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

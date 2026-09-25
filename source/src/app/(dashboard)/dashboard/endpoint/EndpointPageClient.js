@@ -1,23 +1,27 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import PropTypes from "prop-types";
 import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import {
+  WENYAN_LOCALES,
   TUNNEL_BENEFITS,
   TUNNEL_PING_INTERVAL_MS,
   TUNNEL_PING_MAX_MS,
   STATUS_POLL_FAST_MS,
   REACHABLE_MISS_THRESHOLD,
   CLIENT_PING_FAST_MS,
+  CAVEMAN_LEVELS,
+  PONYTAIL_LEVELS,
 } from "./endpointConstants";
 import { clientPingUrl, clientPingAny } from "./endpointPing";
 import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
-export default function APIPageClient({ machineId }) {
+import { buildProviderList } from "@/shared/utils/aclProviderList";
+export default function APIPageClient() {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -25,12 +29,40 @@ export default function APIPageClient({ machineId }) {
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
+  // ACL Edit Modal state
+  const [editingKey, setEditingKey] = useState(null); // key object being edited
+  const [editName, setEditName] = useState("");
+  const [editKinds, setEditKinds] = useState([]); // selected kinds
+  const [editProviders, setEditProviders] = useState([]); // selected provider IDs
+  const [editCombos, setEditCombos] = useState([]); // selected combo names
+  const [editKindsAll, setEditKindsAll] = useState(true); // null = all
+  const [editProvidersAll, setEditProvidersAll] = useState(true);
+  const [editCombosAll, setEditCombosAll] = useState(true);
+  const [editSaving, setEditSaving] = useState(false);
+  const [providerList, setProviderList] = useState([]);
+  const [aliasMap, setAliasMap] = useState({}); // alias → provider ID
+  const [comboList, setComboList] = useState([]);
+
   const [requireApiKey, setRequireApiKey] = useState(false);
+  const [allowRemoteNoApiKey, setAllowRemoteNoApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
   const [hasPassword, setHasPassword] = useState(true);
- const [tunnelDashboardAccess, setTunnelDashboardAccess] = useState(false);
+  const [tunnelDashboardAccess, setTunnelDashboardAccess] = useState(false);
+  const [rtkEnabled, setRtkEnabledState] = useState(true);
+  const [headroomEnabled, setHeadroomEnabled] = useState(false);
+  const [headroomUrl, setHeadroomUrl] = useState("http://localhost:8787");
+  const [headroomCompressUserMessages, setHeadroomCompressUserMessages] = useState(false);
+  const [headroomStatus, setHeadroomStatus] = useState({ installed: false, running: false, python: null, loading: true });
+  const [showHeadroomInstallModal, setShowHeadroomInstallModal] = useState(false);
+  const [headroomActionLoading, setHeadroomActionLoading] = useState(false);
+  const [headroomActionError, setHeadroomActionError] = useState("");
+  const [cavemanEnabled, setCavemanEnabled] = useState(false);
+  const [cavemanLevel, setCavemanLevel] = useState("full");
+  const [ponytailEnabled, setPonytailEnabled] = useState(false);
+  const [ponytailLevel, setPonytailLevel] = useState("full");
+  const [locale, setLocale] = useState("en");
 
- // Cloudflare Tunnel state
+  // Cloudflare Tunnel state
   const [tunnelChecking, setTunnelChecking] = useState(true);
   const [tunnelEnabled, setTunnelEnabled] = useState(false);
   const [tunnelReachable, setTunnelReachable] = useState(false);
@@ -77,12 +109,45 @@ export default function APIPageClient({ machineId }) {
   // API key visibility toggle state
   const [visibleKeys, setVisibleKeys] = useState(new Set());
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/immutability --
+     The useEffects below intentionally run once on mount (locale detection,
+     bootstrap fetch, scroll-into-view, status poll) or sync external state
+     changes back into the UI (caveman level reset when locale changes). The
+     handler functions they call (syncTunnelStatus, loadSettings, patchSetting,
+     fetchData) are declared further down in this 2000-line file, which is
+     a static-analysis limitation, not a runtime bug — closures capture the
+     declarations correctly when the effects run. */
+
   // Client-side local/remote detection (UI hint only, not a security gate)
   const [isRemoteHost, setIsRemoteHost] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined")
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-only detection on mount.
       setIsRemoteHost(!["localhost", "127.0.0.1", "::1"].includes(window.location.hostname));
   }, []);
+
+  // Track app UI locale to gate wenyan caveman levels
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time locale sync on mount; effect is intentional, not a derived value.
+    setLocale(getCurrentLocale());
+    return onLocaleChange(() => setLocale(getCurrentLocale()));
+  }, []);
+
+  const isWenyanLocale = WENYAN_LOCALES.includes(locale);
+  const visibleCavemanLevels = isWenyanLocale
+    ? CAVEMAN_LEVELS
+    : CAVEMAN_LEVELS.filter((lvl) => !lvl.wenyan);
+
+  // Reset wenyan level to "ultra" when leaving a Chinese locale
+  // eslint-disable-next-line react-hooks/immutability -- patchSetting is declared further down in the file; captured by closure at runtime.
+  useEffect(() => {
+    const current = CAVEMAN_LEVELS.find((lvl) => lvl.id === cavemanLevel);
+    if (current?.wenyan && !isWenyanLocale) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs external UI locale change back into local storage; effect is intentional.
+      setCavemanLevel("ultra");
+      patchSetting({ cavemanLevel: "ultra" });
+    }
+  }, [isWenyanLocale, cavemanLevel]);
 
   const { copied, copy } = useCopyToClipboard();
 
@@ -98,12 +163,15 @@ export default function APIPageClient({ machineId }) {
   }, [tsInstallLog]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial bootstrap fetch; the function declarations below are intentionally hoisted below the JSX (no derived state pattern fits a one-shot init).
     fetchData();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial bootstrap fetch.
     loadSettings();
   }, []);
 
   // Status poll: only while degraded (not yet reachable). Stop once healthy to avoid spam.
   // Visibility re-check: refresh once when tab becomes visible.
+  // eslint-disable-next-line react-hooks/immutability -- syncTunnelStatus is declared further down; captured by closure at runtime.
   useEffect(() => {
     const anyEnabled = tunnelEnabled || tsEnabled;
     if (!anyEnabled) return;
@@ -118,6 +186,7 @@ export default function APIPageClient({ machineId }) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
+  // eslint-disable-next-line react-hooks/immutability -- syncTunnelStatus is declared further down in the file; capturing via closure works fine at runtime but trips the static analysis.
   }, [tunnelEnabled, tsEnabled, tunnelReachable, tsReachable]);
 
   // Browser-side periodic ping: probes tunnel/tailscale URLs directly so UI stays
@@ -201,9 +270,19 @@ export default function APIPageClient({ machineId }) {
       if (settingsRes.ok) {
         const data = await settingsRes.json();
         setRequireApiKey(data.requireApiKey || false);
+        setAllowRemoteNoApiKey(data.allowRemoteNoApiKey || false);
         setRequireLogin(data.requireLogin !== false);
         setHasPassword(data.hasPassword || false);
         setTunnelDashboardAccess(data.tunnelDashboardAccess || false);
+        setRtkEnabledState(data.rtkEnabled !== false);
+        setHeadroomEnabled(!!data.headroomEnabled);
+        setHeadroomUrl(data.headroomUrl || "http://localhost:8787");
+        setHeadroomCompressUserMessages(!!data.headroomCompressUserMessages);
+        refreshHeadroomStatus();
+        setCavemanEnabled(!!data.cavemanEnabled);
+        setCavemanLevel(data.cavemanLevel || "full");
+        setPonytailEnabled(!!data.ponytailEnabled);
+        setPonytailLevel(data.ponytailLevel || "full");
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
@@ -253,28 +332,231 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  const handleAllowRemoteNoApiKey = async (value) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowRemoteNoApiKey: value }),
+      });
+      if (res.ok) setAllowRemoteNoApiKey(value);
+    } catch (error) {
+      console.log("Error updating allowRemoteNoApiKey:", error);
+    }
+  };
+
+  const handleRtkEnabled = async (value) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rtkEnabled: value }),
+      });
+      if (res.ok) setRtkEnabledState(value);
+    } catch (error) {
+      console.log("Error updating rtkEnabled:", error);
+    }
+  };
+
+  const patchSetting = async (patch) => {
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+    } catch (error) {
+      console.log("Error updating setting:", error);
+    }
+  };
+
+  const handleCavemanEnabled = (value) => {
+    setCavemanEnabled(value);
+    patchSetting({ cavemanEnabled: value });
+  };
+
+  const handleHeadroomEnabled = (value) => {
+    const nextUrl = headroomUrl.trim() || "http://localhost:8787";
+    setHeadroomUrl(nextUrl);
+    setHeadroomEnabled(value);
+    patchSetting({ headroomEnabled: value, headroomUrl: nextUrl });
+  };
+
+  const handleHeadroomUrlBlur = async () => {
+    const next = headroomUrl.trim() || "http://localhost:8787";
+    setHeadroomUrl(next);
+    await patchSetting({ headroomUrl: next });
+    refreshHeadroomStatus();
+  };
+
+  const handleHeadroomCompressUserMessages = (value) => {
+    setHeadroomCompressUserMessages(value);
+    patchSetting({ headroomCompressUserMessages: value });
+  };
+
+  const refreshHeadroomStatus = useCallback(async () => {
+    setHeadroomStatus((s) => ({ ...s, loading: true }));
+    try {
+      const res = await fetch("/api/headroom/status", { headers: { "Cache-Control": "no-store" } });
+      const data = await res.json();
+      setHeadroomStatus({ ...data, loading: false });
+    } catch {
+      setHeadroomStatus({ installed: false, running: false, python: null, loading: false });
+    }
+  }, []);
+
+  const handleHeadroomStart = useCallback(async () => {
+    setHeadroomActionError("");
+    setHeadroomActionLoading(true);
+    try {
+      const res = await fetch("/api/headroom/start", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to start proxy");
+      await refreshHeadroomStatus();
+    } catch (e) {
+      setHeadroomActionError(e.message);
+    } finally {
+      setHeadroomActionLoading(false);
+    }
+  }, [refreshHeadroomStatus]);
+
+  const handleHeadroomStop = useCallback(async () => {
+    setHeadroomActionLoading(true);
+    try {
+      await fetch("/api/headroom/stop", { method: "POST" });
+      await refreshHeadroomStatus();
+    } finally {
+      setHeadroomActionLoading(false);
+    }
+  }, [refreshHeadroomStatus]);
+
+  const handleCavemanLevel = (level) => {
+    setCavemanLevel(level);
+    patchSetting({ cavemanLevel: level });
+  };
+
+  const handlePonytailEnabled = (value) => {
+    setPonytailEnabled(value);
+    patchSetting({ ponytailEnabled: value });
+  };
+
+  const handlePonytailLevel = (level) => {
+    setPonytailLevel(level);
+    patchSetting({ ponytailLevel: level });
+  };
+
+  // ── ACL Edit Key handlers ──────────────────────────────────────────
+  const ALL_KINDS = ["llm", "embedding", "image", "tts", "stt", "webSearch", "webFetch"];
+
+  // Provider list for the ACL dialog is built by src/shared/utils/aclProviderList.js
+  // (connections + nodes + registered noAuth/free providers). Auth-requiring
+  // providers with zero connections are not shown.
+
+  const handleOpenEditKey = async (key) => {
+    setEditingKey(key);
+    setEditName(key.name || "");
+    const ap = key.allowedProviders;
+    const ac = key.allowedCombos;
+    const ak = key.allowedKinds;
+    setEditProvidersAll(!ap);
+    setEditCombosAll(!ac);
+    setEditKindsAll(!ak);
+    setEditCombos(ac || []);
+    setEditKinds(ak || []);
+
+    // Resolve stored ACL provider values to provider IDs in our list
+    // Stored values can be: full provider ID, prefix (e.g. "tr"), or alias (e.g. "oc", "qd", "kc")
+    if (ap && providerList.length > 0) {
+      const matched = new Set();
+      for (const stored of ap) {
+        // Try direct match with provider ID
+        const direct = providerList.find((p) => p.id === stored);
+        if (direct) { matched.add(direct.id); continue; }
+        // Try match by alias (e.g. "oc" → "opencode", "qd" → "qoder", "kc" → "kilocode")
+        const byAlias = providerList.find((p) => p.alias === stored);
+        if (byAlias) { matched.add(byAlias.id); continue; }
+        // Try match by prefix (e.g. "tr" → TokenRouter)
+        const byPrefix = providerList.find((p) => p.prefix === stored);
+        if (byPrefix) { matched.add(byPrefix.id); continue; }
+        // Keep as-is (unknown reference — may be a deleted provider)
+        matched.add(stored);
+      }
+      setEditProviders([...matched]);
+    } else {
+      setEditProviders([]);
+    }
+  };
+
+  const handleSaveEditKey = async () => {
+    if (!editingKey) return;
+    setEditSaving(true);
+    try {
+      const body = {
+        name: editName.trim() || editingKey.name || "",
+        allowedProviders: editProvidersAll ? null : editProviders,
+        allowedCombos: editCombosAll ? null : editCombos,
+        allowedKinds: editKindsAll ? null : editKinds,
+      };
+      const res = await fetch(`/api/keys/${editingKey.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setKeys((prev) => prev.map((k) => (k.id === editingKey.id ? { ...k, ...data.key } : k)));
+        setEditingKey(null);
+      }
+    } catch (error) {
+      console.log("Error saving key ACL:", error);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const toggleEditProvider = (id) => {
+    setEditProviders((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
+  };
+
+  const toggleEditCombo = (name) => {
+    setEditCombos((prev) => prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]);
+  };
+
+  const toggleEditKind = (kind) => {
+    setEditKinds((prev) => prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]);
+  };
+
   const fetchData = async () => {
     try {
-      const fetchKeys = async () => {
-        const res = await fetch("/api/keys");
-        if (!res.ok) return [];
-        const data = await res.json();
-        return data.keys || [];
-      };
+      const [keysRes, providersRes, combosRes, nodesRes] = await Promise.all([
+        fetch("/api/keys", { cache: "no-store" }),
+        fetch("/api/providers", { cache: "no-store" }),
+        fetch("/api/combos", { cache: "no-store" }),
+        fetch("/api/provider-nodes", { cache: "no-store" }),
+      ]);
 
-      let existing = await fetchKeys();
-      // Auto-provision a default key for first-time users so the endpoint works out of the box.
-      if (existing.length === 0) {
-        try {
-          const createRes = await fetch("/api/keys", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "Default Key" }),
-          });
-          if (createRes.ok) existing = await fetchKeys();
-        } catch { /* fall through to empty render */ }
+      const keysData = await keysRes.json();
+      if (keysRes.ok) {
+        setKeys(keysData.keys || []);
       }
-      setKeys(existing);
+      let connections = [];
+      let nodes = [];
+      let registered = [];
+      if (providersRes.ok) {
+        const pData = await providersRes.json();
+        connections = pData.connections || [];
+        if (pData.aliasMap) setAliasMap(pData.aliasMap);
+        registered = pData.providers || [];
+      }
+      if (nodesRes.ok) {
+        const nData = await nodesRes.json();
+        nodes = nData.nodes || [];
+      }
+      setProviderList(buildProviderList(connections, nodes, registered));
+      if (combosRes.ok) {
+        const cData = await combosRes.json();
+        setComboList(cData.combos || []);
+      }
     } catch (error) {
       console.log("Error fetching data:", error);
     } finally {
@@ -701,6 +983,7 @@ export default function APIPageClient({ machineId }) {
   // Hydration fix: Only access window on client side
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-only hydration; this is the canonical useEffect+setState pattern, not a derived value.
       setBaseUrl(`${window.location.origin}/v1`);
     }
   }, []);
@@ -715,6 +998,19 @@ export default function APIPageClient({ machineId }) {
   }
 
   const currentEndpoint = baseUrl;
+  const headroomRunning = !!headroomStatus.running;
+  const headroomLocalUrl = headroomStatus.localUrl !== false;
+  const headroomCanStart = !!headroomStatus.canStart;
+  const headroomManaged = headroomLocalUrl && !!headroomStatus.managedPid;
+  const headroomStatusLabel = headroomStatus.loading
+    ? "Checking…"
+    : headroomRunning
+      ? "Running"
+      : headroomLocalUrl && !headroomStatus.installed
+        ? "Not installed"
+        : headroomLocalUrl
+          ? "Proxy off"
+          : "Unreachable";
 
   return (
     <div className="flex flex-col gap-8">
@@ -963,6 +1259,166 @@ export default function APIPageClient({ machineId }) {
         )}
       </Card>
 
+      {/* Token Saver (RTK + Caveman + Ponytail + Headroom) */}
+      <Card id="rtk">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">bolt</span>
+            Token Saver
+          </h2>
+        </div>
+        <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              Compress tool output{" "}
+              <a
+                href="https://github.com/rtk-ai/rtk"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-normal text-primary underline hover:opacity-80"
+              >
+                (RTK)
+              </a>
+            </p>
+            <p className="text-sm text-text-muted">
+              git/grep/ls/tree/logs → 60-90% fewer input tokens
+            </p>
+          </div>
+          <Toggle
+            checked={rtkEnabled}
+            onChange={() => handleRtkEnabled(!rtkEnabled)}
+          />
+        </div>
+        <div className="flex items-center justify-between py-4 border-b border-border gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="font-medium">
+                Compress context{" "}
+                <a
+                  href="https://github.com/chopratejas/headroom"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-normal text-primary underline hover:opacity-80"
+                >
+                  (Headroom)
+                </a>
+              </p>
+              <span className={`text-xs px-2 py-0.5 rounded ${headroomRunning ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
+                {headroomStatusLabel}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowHeadroomInstallModal(true)}
+                className="text-xs text-primary underline hover:opacity-80"
+              >
+                  {headroomRunning ? "Manage" : "Setup"}
+              </button>
+            </div>
+            <p className="text-sm text-text-muted mt-1">
+              Compress prompts via /v1/compress before routing to the model
+            </p>
+          </div>
+          <Toggle
+            checked={headroomEnabled}
+            onChange={() => handleHeadroomEnabled(!headroomEnabled)}
+          />
+        </div>
+        <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              Compress LLM output{" "}
+              <a
+                href="https://github.com/JuliusBrussee/caveman"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-normal text-primary underline hover:opacity-80"
+              >
+                (Caveman)
+              </a>
+            </p>
+            <p className="text-sm text-text-muted">
+              Terse-style system prompt → ~65% fewer output tokens (up to 87%)
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {cavemanEnabled && (
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  {visibleCavemanLevels.map((lvl) => (
+                    <button
+                      key={lvl.id}
+                      onClick={() => handleCavemanLevel(lvl.id)}
+                      className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                        cavemanLevel === lvl.id
+                          ? "bg-primary text-white border-primary"
+                          : "bg-transparent border-border text-text-muted hover:bg-surface-2"
+                      }`}
+                      title={lvl.desc}
+                    >
+                      {lvl.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-primary">
+                  {CAVEMAN_LEVELS.find((lvl) => lvl.id === cavemanLevel)?.desc}
+                </p>
+              </div>
+            )}
+            <Toggle
+              checked={cavemanEnabled}
+              onChange={() => handleCavemanEnabled(!cavemanEnabled)}
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between pt-4 mt-4 border-t border-border gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              Lazy senior dev{" "}
+              <a
+                href="https://github.com/DietrichGebert/ponytail"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-normal text-primary underline hover:opacity-80"
+              >
+                (Ponytail)
+              </a>
+            </p>
+            <p className="text-sm text-text-muted">
+              Bias the model toward minimal code: YAGNI, reuse stdlib, deletion over addition
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {ponytailEnabled && (
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  {PONYTAIL_LEVELS.map((lvl) => (
+                    <button
+                      key={lvl.id}
+                      onClick={() => handlePonytailLevel(lvl.id)}
+                      className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                        ponytailLevel === lvl.id
+                          ? "bg-primary text-white border-primary"
+                          : "bg-transparent border-border text-text-muted hover:bg-surface-2"
+                      }`}
+                      title={lvl.desc}
+                    >
+                      {lvl.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-primary">
+                  {PONYTAIL_LEVELS.find((lvl) => lvl.id === ponytailLevel)?.desc}
+                </p>
+              </div>
+            )}
+            <Toggle
+              checked={ponytailEnabled}
+              onChange={() => handlePonytailEnabled(!ponytailEnabled)}
+            />
+          </div>
+        </div>
+      </Card>
+
       {/* API Keys */}
       <Card id="require-api-key">
         <div className="flex items-center justify-between mb-4">
@@ -994,6 +1450,29 @@ export default function APIPageClient({ machineId }) {
           </div>
         )}
 
+        {!requireApiKey && isRemoteHost && (
+          <div className="flex items-center justify-between p-4 rounded-xl bg-surface/50 border border-border/30 mb-4">
+            <div>
+              <p className="text-sm font-medium text-text-main">
+                Allow Remote Access Without API Key
+              </p>
+              <p className="text-sm text-text-muted">
+                Let non-loopback requests reach /v1/* without a key (use with caution)
+              </p>
+            </div>
+            <Toggle
+              checked={allowRemoteNoApiKey}
+              onChange={() => handleAllowRemoteNoApiKey(!allowRemoteNoApiKey)}
+            />
+          </div>
+        )}
+
+        {!requireApiKey && allowRemoteNoApiKey && (
+          <div className="mb-4 -mt-2">
+            <SecurityWarning message="Remote access without an API key is enabled — anyone who can reach this endpoint can use your providers." />
+          </div>
+        )}
+
         {keys.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
@@ -1020,7 +1499,7 @@ export default function APIPageClient({ machineId }) {
                     </code>
                     <button
                       onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                       title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
                     >
                       <span className="material-symbols-outlined text-[14px]">
@@ -1029,7 +1508,7 @@ export default function APIPageClient({ machineId }) {
                     </button>
                     <button
                       onClick={() => copy(key.key, key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                     >
                       <span className="material-symbols-outlined text-[14px]">
                         {copied === key.id ? "check" : "content_copy"}
@@ -1039,11 +1518,49 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
-                  {key.isActive === false && (
+                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
+                  )}
+                   {/* ACL badges */}
+                  {(key.allowedProviders || key.allowedCombos || key.allowedKinds) && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {key.allowedProviders && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 dark:bg-blue-500/20" title={key.allowedProviders.join(", ")}>
+                          {key.allowedProviders.length === 0
+                            ? "No providers"
+                            : key.allowedProviders.map((stored) => {
+                                // Try providerList first (has connections)
+                                const p = providerList.find((pp) => pp.id === stored || pp.alias === stored || pp.prefix === stored);
+                                if (p) return p.displayName;
+                                // Try aliasMap for providers without connections
+                                const resolved = aliasMap[stored];
+                                if (resolved) return resolved;
+                                return stored;
+                              }).join(", ")}
+                        </span>
+                      )}
+                      {key.allowedCombos && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-500 dark:bg-purple-500/20">
+                          {key.allowedCombos.length === 0 ? "No combos" : key.allowedCombos.join(", ")}
+                        </span>
+                      )}
+                      {key.allowedKinds && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 dark:bg-green-500/20">
+                          {key.allowedKinds.length === 0 ? "No kinds" : key.allowedKinds.join(", ")}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Edit ACL button */}
+                  <button
+                    onClick={() => handleOpenEditKey(key)}
+                    className="p-2 hover:bg-primary/10 rounded text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                    title="Edit access control"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">tune</span>
+                  </button>
                   <Toggle
                     size="sm"
                     checked={key.isActive ?? true}
@@ -1145,6 +1662,137 @@ export default function APIPageClient({ machineId }) {
         </div>
       </Modal>
 
+      {/* Edit ACL Modal */}
+      <Modal
+        isOpen={!!editingKey}
+        title={`Edit Access: ${editingKey?.name || ""}`}
+        onClose={() => !editSaving && setEditingKey(null)}
+      >
+        <div className="flex flex-col gap-5">
+          {/* Name */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Key Name</label>
+            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Key name" />
+          </div>
+
+          {/* Service Kinds */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">Service Kinds</label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input type="checkbox" checked={editKindsAll} onChange={(e) => setEditKindsAll(e.target.checked)} />
+                <span className="text-text-muted">All allowed</span>
+              </label>
+            </div>
+            {!editKindsAll && (
+              <div className="flex flex-wrap gap-2">
+                {ALL_KINDS.map((kind) => (
+                  <label key={kind} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${editKinds.includes(kind) ? "border-primary bg-primary/10 text-primary" : "border-border-subtle text-text-muted hover:border-primary/40"}`}>
+                    <input type="checkbox" className="hidden" checked={editKinds.includes(kind)} onChange={() => toggleEditKind(kind)} />
+                    {kind}
+                  </label>
+                ))}
+              </div>
+            )}
+            {editKindsAll && <p className="text-xs text-text-muted">This key can access all service kinds.</p>}
+          </div>
+
+          {/* Providers */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">Providers</label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input type="checkbox" checked={editProvidersAll} onChange={(e) => setEditProvidersAll(e.target.checked)} />
+                <span className="text-text-muted">All allowed</span>
+              </label>
+            </div>
+            {!editProvidersAll && (
+              <>
+                <div className="max-h-60 overflow-y-auto border border-border-subtle rounded-lg p-2 space-y-1">
+                  {providerList.length === 0 ? (
+                    <p className="text-xs text-text-muted p-2">No providers configured.</p>
+                  ) : (
+                    providerList.map((p) => {
+                      const checked = editProviders.includes(p.id);
+                      return (
+                        <label key={p.id} className={`flex items-center gap-2 px-2 py-2 rounded text-xs cursor-pointer transition-colors ${checked ? "bg-primary/10 text-primary" : "hover:bg-surface-2"}`}>
+                          <input type="checkbox" checked={checked} onChange={() => toggleEditProvider(p.id)} className="rounded" />
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium">{p.displayName}</span>
+                            {p.prefix && (
+                              <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-surface-2 text-text-muted font-mono">{p.prefix}</span>
+                            )}
+                          </div>
+                          <span className="text-text-muted text-[10px] shrink-0">{p.count} conn</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                {editProviders.length === 0 && (
+                  <p className="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-2 py-1 mt-1.5 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[14px]">warning</span>
+                    <span>Warning: Zero providers selected. This key will have NO access to any providers (Deny All).</span>
+                  </p>
+                )}
+              </>
+            )}
+            {editProvidersAll && <p className="text-xs text-text-muted">This key can access all providers ({providerList.length}).</p>}
+          </div>
+
+          {/* Combos */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">Combos</label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input type="checkbox" checked={editCombosAll} onChange={(e) => setEditCombosAll(e.target.checked)} />
+                <span className="text-text-muted">All allowed</span>
+              </label>
+            </div>
+            {!editCombosAll && (
+              <div className="max-h-40 overflow-y-auto border border-border-subtle rounded-lg p-2 space-y-1">
+                {comboList.length === 0 ? (
+                  <p className="text-xs text-text-muted p-2">No combos configured.</p>
+                ) : (
+                  comboList.map((combo) => {
+                    const name = combo.name || combo.id;
+                    const checked = editCombos.includes(name);
+                    return (
+                      <label key={name} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs cursor-pointer transition-colors ${checked ? "bg-primary/10 text-primary" : "hover:bg-surface-2"}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleEditCombo(name)} className="rounded" />
+                        <span>{name}</span>
+                        <span className="text-text-muted ml-auto text-[10px]">{Array.isArray(combo.models) ? combo.models.length : 0} models</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            )}
+            {editCombosAll && <p className="text-xs text-text-muted">This key can access all combos.</p>}
+          </div>
+
+          {/* ACL info */}
+          <div className="text-xs text-text-muted bg-surface-2 rounded-lg p-3 border border-border-subtle">
+            <p className="font-medium mb-1">How it works:</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              <li><strong>All allowed</strong> = unrestricted (default). No ACL filtering.</li>
+              <li><strong>Unchecked + empty</strong> = deny everything of that type.</li>
+              <li><strong>Checked items</strong> = only those items are accessible.</li>
+            </ul>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <Button onClick={() => setEditingKey(null)} variant="ghost" fullWidth disabled={editSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEditKey} fullWidth disabled={editSaving}>
+              {editSaving ? "Saving..." : "Save ACL"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Enable Tunnel Modal */}
       <Modal
         isOpen={showEnableTunnelModal}
@@ -1160,7 +1808,7 @@ export default function APIPageClient({ machineId }) {
                   Cloudflare Tunnel
                 </p>
                 <p className="text-sm text-text-muted">
-                  Expose your local 9Router to the internet. No port forwarding, no static IP needed. Share endpoint URL with your team or use it in Cursor, Cline, and other AI tools from anywhere.
+                  Expose your local Mayday to the internet. No port forwarding, no static IP needed. Share endpoint URL with your team or use it in Cursor, Cline, and other AI tools from anywhere.
                 </p>
               </div>
             </div>
@@ -1291,6 +1939,67 @@ export default function APIPageClient({ machineId }) {
         </div>
       </Modal>
 
+      {/* Headroom Install Guide Modal */}
+      <Modal
+        isOpen={showHeadroomInstallModal}
+        title={headroomRunning ? "Headroom" : "Setup Headroom"}
+        onClose={() => setShowHeadroomInstallModal(false)}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between text-sm">
+            <span>Status</span>
+            <span className={headroomRunning ? "text-success" : "text-warning"}>
+              {headroomStatusLabel}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium">Proxy URL</p>
+            <Input
+              value={headroomUrl}
+              onChange={(e) => setHeadroomUrl(e.target.value)}
+              onBlur={handleHeadroomUrlBlur}
+              placeholder="http://localhost:8787"
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-text-muted">
+              Use a local proxy for Start/Stop, or an external Docker sidecar like http://headroom:8787.
+            </p>
+          </div>
+          {headroomManaged ? (
+            <Button onClick={handleHeadroomStop} variant="ghost" fullWidth disabled={headroomActionLoading}>
+              {headroomActionLoading ? "Stopping…" : "Stop Headroom"}
+            </Button>
+          ) : headroomRunning ? (
+            <p className="text-sm text-success">Headroom proxy is reachable. You can enable the token saver.</p>
+          ) : headroomCanStart ? (
+            <Button onClick={handleHeadroomStart} fullWidth disabled={headroomActionLoading}>
+              {headroomActionLoading ? "Starting…" : "Start Headroom"}
+            </Button>
+          ) : !headroomLocalUrl ? (
+            <p className="text-sm text-warning">Start Headroom separately at the configured URL, then recheck.</p>
+          ) : !headroomStatus.python ? (
+            <p className="text-sm text-warning">Python ≥ 3.10 required for local managed mode. Install Python first, or use an external proxy URL.</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium">Install then click Start:</p>
+              <div className="flex items-center gap-2">
+                <pre className="flex-1 rounded bg-black/5 dark:bg-white/5 p-2 text-xs font-mono overflow-x-auto">{`pip install "headroom-ai[proxy]"`}</pre>
+                <Button size="sm" variant="ghost" onClick={() => copy(`pip install "headroom-ai[proxy]"`)}>
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+            </div>
+          )}
+          {headroomActionError && (
+            <p className="text-sm text-warning">{headroomActionError}</p>
+          )}
+          <div className="flex gap-2">
+            <Button onClick={() => refreshHeadroomStatus()} variant="ghost" fullWidth>Recheck</Button>
+            <Button onClick={() => setShowHeadroomInstallModal(false)} fullWidth>Done</Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Confirm Modal */}
       <ConfirmModal
         isOpen={!!confirmState}
@@ -1305,6 +2014,3 @@ export default function APIPageClient({ machineId }) {
 }
 
 
-APIPageClient.propTypes = {
-  machineId: PropTypes.string.isRequired,
-};

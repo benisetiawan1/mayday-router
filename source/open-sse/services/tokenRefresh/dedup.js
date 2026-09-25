@@ -8,10 +8,12 @@ function evictRefreshDedupIfNeeded() {
   for (const [k, v] of refreshDedupCache) {
     if (!v.promise && v.expiresAt <= now) refreshDedupCache.delete(k);
   }
-  while (refreshDedupCache.size > REFRESH_DEDUP_MAX_ENTRIES) {
-    const oldest = refreshDedupCache.keys().next().value;
-    if (oldest === undefined) break;
-    refreshDedupCache.delete(oldest);
+  // If still over limit, delete oldest entries
+  if (refreshDedupCache.size > REFRESH_DEDUP_MAX_ENTRIES) {
+    const sorted = [...refreshDedupCache.entries()]
+      .sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+    const toDelete = sorted.slice(0, refreshDedupCache.size - REFRESH_DEDUP_MAX_ENTRIES);
+    for (const [k] of toDelete) refreshDedupCache.delete(k);
   }
 }
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
-import PropTypes from "prop-types";
+import { useState, useCallback, useMemo, Fragment, useEffect } from "react";
 import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
 
-const fmt = (n) => new Intl.NumberFormat().format(n || 0);
+const _nf = new Intl.NumberFormat();
+const fmt = (n) => _nf.format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
 
 function fmtTime(iso) {
@@ -22,12 +22,6 @@ function SortIcon({ field, currentSort, currentOrder }) {
   return <span className="ml-1">{currentOrder === "asc" ? "↑" : "↓"}</span>;
 }
 
-SortIcon.propTypes = {
-  field: PropTypes.string.isRequired,
-  currentSort: PropTypes.string.isRequired,
-  currentOrder: PropTypes.string.isRequired,
-};
-
 /**
  * Render 3 token or cost cells based on viewMode
  */
@@ -37,9 +31,6 @@ function ValueCells({ item, viewMode, isSummary = false }) {
       <>
         <td className="px-6 py-3 text-right text-text-muted">
           {isSummary && item.promptTokens === undefined ? "—" : fmt(item.promptTokens)}
-        </td>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {item.cachedTokens ? fmt(item.cachedTokens) : "—"}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
           {isSummary && item.completionTokens === undefined ? "—" : fmt(item.completionTokens)}
@@ -56,9 +47,6 @@ function ValueCells({ item, viewMode, isSummary = false }) {
         {isSummary && item.inputCost === undefined ? "—" : fmtCost(item.inputCost)}
       </td>
       <td className="px-6 py-3 text-right text-text-muted">
-        {item.cachedCost ? fmtCost(item.cachedCost) : "—"}
-      </td>
-      <td className="px-6 py-3 text-right text-text-muted">
         {isSummary && item.outputCost === undefined ? "—" : fmtCost(item.outputCost)}
       </td>
       <td className="px-6 py-3 text-right font-medium text-warning">
@@ -67,12 +55,6 @@ function ValueCells({ item, viewMode, isSummary = false }) {
     </>
   );
 }
-
-ValueCells.propTypes = {
-  item: PropTypes.object.isRequired,
-  viewMode: PropTypes.string.isRequired,
-  isSummary: PropTypes.bool,
-};
 
 /**
  * Reusable sortable usage table with expandable group rows.
@@ -102,31 +84,19 @@ export default function UsageTable({
   onToggleSort,
   viewMode,
   storageKey,
-  renderDetailCells,
-  renderSummaryCells,
+  renderDetailCells: detailCells,
+  renderSummaryCells: summaryCells,
   emptyMessage,
 }) {
-  const [expanded, setExpanded] = useState(new Set());
-
-  // Load expanded state from localStorage
-  useEffect(() => {
+  const [expanded, setExpanded] = useState(() => {
     try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) setExpanded(new Set(JSON.parse(saved)));
-    } catch (e) {
-      console.error(`Failed to load ${storageKey}:`, e);
-    }
-  }, [storageKey]);
+      const saved = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+      if (saved) return new Set(JSON.parse(saved));
+    } catch { /* ignore */ }
+    return new Set();
+  });
 
   // Save expanded state to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify([...expanded]));
-    } catch (e) {
-      console.error(`Failed to save ${storageKey}:`, e);
-    }
-  }, [expanded, storageKey]);
-
   const toggleGroup = useCallback((groupKey) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -135,18 +105,24 @@ export default function UsageTable({
     });
   }, []);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([...expanded]));
+    } catch (e) {
+      console.error(`Failed to save ${storageKey}:`, e);
+    }
+  }, [expanded, storageKey]);
+
   const valueColumns = useMemo(() => {
     if (viewMode === "tokens") {
       return [
         { field: "promptTokens", label: "Input Tokens" },
-        { field: "cachedTokens", label: "Cached" },
         { field: "completionTokens", label: "Output Tokens" },
         { field: "totalTokens", label: "Total Tokens" },
       ];
     }
     return [
       { field: "promptTokens", label: "Input Cost" },
-      { field: "cachedCost", label: "Cached Cost" },
       { field: "completionTokens", label: "Output Cost" },
       { field: "cost", label: "Total Cost" },
     ];
@@ -203,7 +179,7 @@ export default function UsageTable({
                       </span>
                     </div>
                   </td>
-                  {renderSummaryCells(group)}
+                  {summaryCells(group)}
                   <ValueCells item={group.summary} viewMode={viewMode} isSummary />
                 </tr>
                 {/* Detail rows */}
@@ -212,7 +188,7 @@ export default function UsageTable({
                     key={`detail-${item.key}`}
                     className="group-detail hover:bg-bg-subtle/20 transition-colors"
                   >
-                    {renderDetailCells(item)}
+                    {detailCells(item)}
                     <ValueCells item={item} viewMode={viewMode} />
                   </tr>
                 ))}
@@ -231,25 +207,6 @@ export default function UsageTable({
     </Card>
   );
 }
-
-UsageTable.propTypes = {
-  title: PropTypes.string.isRequired,
-  columns: PropTypes.arrayOf(PropTypes.shape({
-    field: PropTypes.string.isRequired,
-    label: PropTypes.string.isRequired,
-    align: PropTypes.string,
-  })).isRequired,
-  groupedData: PropTypes.array.isRequired,
-  tableType: PropTypes.string.isRequired,
-  sortBy: PropTypes.string.isRequired,
-  sortOrder: PropTypes.string.isRequired,
-  onToggleSort: PropTypes.func.isRequired,
-  viewMode: PropTypes.string.isRequired,
-  storageKey: PropTypes.string.isRequired,
-  renderDetailCells: PropTypes.func.isRequired,
-  renderSummaryCells: PropTypes.func.isRequired,
-  emptyMessage: PropTypes.string.isRequired,
-};
 
 // Re-export utilities for use in UsageStats orchestrator
 export { fmt, fmtCost, fmtTime };

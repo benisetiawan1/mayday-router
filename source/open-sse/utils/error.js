@@ -1,4 +1,5 @@
 import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 
 /**
  * Build OpenAI-compatible error response body
@@ -69,7 +70,12 @@ export async function parseUpstreamError(response, executor = null) {
       const parsed = executor.parseError(response, bodyText);
       if (parsed && typeof parsed === "object") {
         const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
-        return { statusCode: parsed.status || response.status, message: msg, resetsAtMs: parsed.resetsAtMs };
+        return {
+          statusCode: parsed.status || response.status,
+          message: msg,
+          resetsAtMs: parsed.resetsAtMs,
+          poolScoped: parsed.poolScoped,
+        };
       }
     } catch { /* fall through to default parsing */ }
   }
@@ -77,7 +83,12 @@ export async function parseUpstreamError(response, executor = null) {
   let message = "";
   try {
     const json = JSON.parse(bodyText);
-    message = json.error?.message || json.message || json.error || bodyText;
+    const { error: envError } = unwrapClinepassEnvelope(json, executor?.getProvider?.() || executor?.provider);
+    if (envError) {
+      message = envError.message;
+    } else {
+      message = json.error?.message || json.message || json.error || bodyText;
+    }
   } catch {
     message = bodyText;
   }
@@ -95,12 +106,13 @@ export async function parseUpstreamError(response, executor = null) {
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs) {
+export function createErrorResult(statusCode, message, resetsAtMs, policyError = false) {
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
+    policyError,
     response: errorResponse(statusCode, message)
   };
 }
@@ -126,6 +138,31 @@ export function unavailableResponse(statusCode, message, retryAfter, retryAfterH
       }
     }
   );
+}
+
+/**
+ * Attach the X-VansRoute-Selected-Connection-Id header to a response so
+ * clients can see which upstream account handled their request.
+ *
+ * Works for both streaming and non-streaming responses: `response.body`
+ * (a ReadableStream) is passed by reference to the new Response, so the
+ * stream continues to flow untouched — only the headers object is rebuilt.
+ *
+ * Returns the original response unchanged when connectionId is falsy.
+ *
+ * @param {Response} response - the response to tag
+ * @param {string} [connectionId] - the selected connection's id
+ * @returns {Response}
+ */
+export function withSelectedConnectionHeader(response, connectionId) {
+  if (!response || !connectionId) return response;
+  const headers = new Headers(response.headers);
+  headers.set("X-VansRoute-Selected-Connection-Id", connectionId);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 /**

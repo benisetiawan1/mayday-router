@@ -15,7 +15,7 @@ export default {
   category: "oauth",
   authModes: ["oauth", "apikey"],
   hasOAuth: true,
-  authHint: "Personal Access Token (pt-...) từ https://qoder.com/account/integrations",
+  authHint: "Personal Access Token (pt-...) from https://qoder.com/account/integrations",
   transport: {
     baseUrl: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
     headers: {},
@@ -26,19 +26,16 @@ export default {
     },
   },
   models: [
+    { id: "qmodel_latest", name: "Qoder Qwen 3.7 Max" },
     { id: "ultimate", name: "Ultimate" },
     { id: "auto", name: "Auto" },
     { id: "performance", name: "Performance" },
     { id: "efficient", name: "Efficient" },
-    { id: "lite", name: "Lite" },
-    { id: "qmodel_38max", name: "Qwen3.8-Max" },
-    { id: "qmodel_latest", name: "Qwen3.7-Max" },
+    { id: "qmodel_preview", name: "Qwen3.8-Max-Preview" },
     { id: "qmodel", name: "Qwen3.7-Plus" },
-    { id: "qfmodel", name: "Qwen3.8-Flash" },
     { id: "kmodel_latest", name: "Kimi-K3" },
     { id: "kmodel", name: "Kimi-K2.7-Code" },
-    { id: "gmodel", name: "GLM-5.3" },
-    { id: "gfmodel", name: "GLM-5.3-Flash" },
+    { id: "gm51model", name: "GLM-5.2" },
     { id: "dmodel", name: "DeepSeek-V4-Pro" },
     { id: "dfmodel", name: "DeepSeek-V4-Flash" },
     { id: "mmodel", name: "MiniMax-M3" },
@@ -55,7 +52,6 @@ export default {
   },
   features: {
     usage: true,
-    // PAT (apikey) connections also carry quota usage (via job-token exchange).
     usageApikey: true,
   },
 };

@@ -29,6 +29,7 @@ export default {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/vnd.amazon.eventstream",
+      "X-Amz-Target": "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
       "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
       "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
     },
@@ -115,6 +116,10 @@ export default {
     socialLoginUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/login",
     socialTokenUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/oauth/token",
     socialRefreshUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
+    socialClientId: process.env.KIRO_OAUTH_CLIENT_ID || "kiro-cli",
+    socialDeviceAuthorizeUrl:
+      "https://prod.us-east-1.auth.desktop.kiro.dev/oauth/device/authorization",
+    socialDevicePollUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/oauth/device/poll",
     authMethods: [
       "builder-id",
       "idc",

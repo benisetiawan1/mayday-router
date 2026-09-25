@@ -19,9 +19,9 @@
  * "format of value 'os/win/10 lang/js ...' is invalid").
  */
 
-import { v4 as uuidv4 } from "uuid";
-import { createHash } from "crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { refreshKiroToken } from "./tokenRefresh.js";
+import { assertValidKiroRegion } from "../config/awsRegion.js";
 
 const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
 const KIRO_AGENT_OS = "windows";
@@ -55,7 +55,10 @@ function stripSyntheticSuffixes(id) {
 function regionFromProfileArn(profileArn) {
   if (!profileArn || typeof profileArn !== "string") return DEFAULT_REGION;
   const parts = profileArn.split(":");
-  if (parts.length >= 4 && parts[3]) return parts[3];
+  if (parts.length >= 4 && parts[3]) {
+    assertValidKiroRegion(parts[3]);
+    return parts[3];
+  }
   return DEFAULT_REGION;
 }
 
@@ -87,7 +90,7 @@ function buildKiroFingerprintHeaders(credentials) {
     "x-amzn-kiro-agent-mode": "vibe",
     "x-amzn-codewhisperer-optout": "true",
     "amz-sdk-request": "attempt=1; max=1",
-    "amz-sdk-invocation-id": uuidv4(),
+    "amz-sdk-invocation-id": randomUUID(),
     "Accept": "application/json"
   };
 }
@@ -159,6 +162,7 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
 async function fetchKiroCatalogRaw(credentials, signal) {
   const profileArn = credentials?.providerSpecificData?.profileArn || "";
   const region = regionFromProfileArn(profileArn);
+  assertValidKiroRegion(region);
   const params = new URLSearchParams();
   params.set("origin", "AI_EDITOR");
   if (profileArn) params.set("profileArn", profileArn);
@@ -319,7 +323,7 @@ export async function resolveKiroModels(credentials, options = {}) {
  * Drop any cached catalog for this credential. Call this after rotating /
  * importing tokens so the next fetch is fresh.
  */
-export function invalidateKiroModelCache(credentials) {
+function invalidateKiroModelCache(credentials) {
   if (!credentials) return;
   catalogCache.delete(cacheKey(credentials));
 }
@@ -327,6 +331,6 @@ export function invalidateKiroModelCache(credentials) {
 /**
  * Drop the entire in-memory cache. Mostly for tests / manual debug.
  */
-export function clearKiroModelCache() {
+function clearKiroModelCache() {
   catalogCache.clear();
 }

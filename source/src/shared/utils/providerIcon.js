@@ -5,7 +5,11 @@ const ICON_ALIASES = {
   "perplexity-agent": "perplexity",
   "gitlab-duo": "gitlab",
   "vercel-ai-gateway": "vercel",
-  "ollama-search": "ollama",
+  "perplexing": "perplexity",
+  "kilo": "kilocode",
+  "kilo-gateway": "kilocode",
+  "codebuddy-intl": "codebuddy-cn",
+  "alims-intl": "alicode-intl",
 };
 
 // Runtime only — first 404 remembers id for the whole session
@@ -26,10 +30,26 @@ export function resolveProviderIconId(providerId) {
   return aliased;
 }
 
-/** `/providers/{id}.png` or null when previously failed. */
+const PNG_PROVIDERS = new Set([
+  "devin-cli",
+  "vercel",
+  "venice",
+  "perplexity-agent",
+  "morph",
+  "novita",
+  "agentrouter",
+  "grok-cli",
+  "clinepass",
+  "freebuff",
+  "mmf"
+]);
+
+/** `/providers/{id}.webp` (or .png) or null when previously failed. */
 export function getProviderIconSrc(providerId) {
   const id = resolveProviderIconId(providerId);
-  return id ? `/providers/${id}.png` : null;
+  if (!id) return null;
+  const ext = PNG_PROVIDERS.has(id) ? "png" : "webp";
+  return `/providers/${id}.${ext}`;
 }
 
 /** Call from img onError so later mounts skip the request. */
@@ -39,3 +59,27 @@ export function markProviderIconMissing(providerId) {
   const aliased = ICON_ALIASES[id];
   if (aliased) failedIds.add(aliased);
 }
+
+const POPULAR_PROVIDERS = [
+  "openai", "anthropic", "claude", "gemini", "github", "copilot", "cursor",
+  "grok-cli", "kiro", "deepseek", "qwen", "mistral", "groq", "openrouter",
+  "together", "cohere", "ollama", "cerebras", "sambanova", "fireworks",
+  "siliconflow", "vllm", "vertex", "azure", "aws-polly", "deepgram", "elevenlabs",
+  "searxng", "jina-ai", "tavily", "perplexing", "alicode", "cline", "roo", "kilo", "codex"
+];
+
+/** Non-blocking background preloader for provider icon webp images */
+export function preloadProviderIcons(providerIds = POPULAR_PROVIDERS) {
+  if (typeof window === "undefined") return;
+  const schedule = window.requestIdleCallback || ((cb) => setTimeout(cb, 1000));
+  schedule(() => {
+    for (const pId of providerIds) {
+      const src = getProviderIconSrc(pId);
+      if (src) {
+        const img = new Image();
+        img.src = src;
+      }
+    }
+  }, { timeout: 2000 });
+}
+

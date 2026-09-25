@@ -12,14 +12,12 @@ function CallbackContent() {
 
   useEffect(() => {
     const code = searchParams.get("code");
-    const token = searchParams.get("token");
     const state = searchParams.get("state");
     const error = searchParams.get("error");
     const errorDescription = searchParams.get("error_description");
 
     const callbackData = {
       code,
-      token,
       state,
       error,
       errorDescription,
@@ -66,22 +64,26 @@ function CallbackContent() {
 
     // Method 3: localStorage event (fallback)
     try {
-      localStorage.setItem("oauth_callback", JSON.stringify({ ...callbackData, timestamp: Date.now() }));
+      localStorage.setItem("oauth_callback_v1", JSON.stringify({ ...callbackData, timestamp: Date.now() }));
       relayed = true;
     } catch (e) {
       console.log("localStorage failed:", e);
     }
 
-    if (!(code || token || error)) {
-      setTimeout(() => setStatus("manual"), 0);
-      return;
+    if (!(code || error)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time callback status update after URL params parsed.
+      const t = setTimeout(() => setStatus("manual"), 0);
+      return () => clearTimeout(t);
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time callback success state.
     setStatus("success");
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
       window.close();
-      setTimeout(() => setStatus("done"), 500);
+      const t2 = setTimeout(() => setStatus("done"), 500);
+      return () => clearTimeout(t2);
     }, 1500);
+    return () => clearTimeout(t1);
   }, [searchParams]);
 
   return (

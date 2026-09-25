@@ -42,14 +42,6 @@ function findFirstUserIndex(history) {
   return history.findIndex((item) => item?.userInputMessage);
 }
 
-function hasToolResults(message) {
-  return !!message?.userInputMessage?.userInputMessageContext?.toolResults?.length;
-}
-
-function canReplaceSessionStart(history, firstUserIndex) {
-  return firstUserIndex === 0 && !hasToolResults(history[firstUserIndex]);
-}
-
 function rememberSessionStart(key, entry) {
   if (sessionStartStore.size >= MAX_SESSION_STARTS) {
     sessionStartStore.delete(sessionStartStore.keys().next().value);
@@ -81,13 +73,10 @@ export function applyKiroSessionReplay({
     existing.lastUsed = Date.now();
     const firstUserIndex = findFirstUserIndex(baseHistory);
     const sessionStart = ensureUserMessageModelId(clone(existing.sessionStart), modelId);
-    if (canReplaceSessionStart(baseHistory, firstUserIndex)) {
+    if (firstUserIndex >= 0) {
       baseHistory[firstUserIndex] = sessionStart;
     } else {
       baseHistory.unshift(sessionStart);
-      if (baseHistory.length === 1) {
-        baseHistory.push({ assistantResponseMessage: { content: "..." } });
-      }
     }
     return {
       history: ensureHistoryModelIds(baseHistory, modelId),
@@ -99,17 +88,9 @@ export function applyKiroSessionReplay({
   const firstUserIndex = findFirstUserIndex(baseHistory);
   let sessionStart;
   let nextCurrent = ensureUserMessageModelId(baseCurrent, modelId);
-  if (canReplaceSessionStart(baseHistory, firstUserIndex)) {
+  if (firstUserIndex >= 0) {
     sessionStart = prefixUserMessage(baseHistory[firstUserIndex], contentPrefix, modelId);
     baseHistory[firstUserIndex] = clone(sessionStart);
-    nextCurrent = prefixUserMessage(baseCurrent, currentContentPrefix, modelId);
-  } else if (firstUserIndex >= 0) {
-    sessionStart = prefixUserMessage(
-      { userInputMessage: { content: "", modelId } },
-      contentPrefix,
-      modelId
-    );
-    baseHistory.unshift(clone(sessionStart));
     nextCurrent = prefixUserMessage(baseCurrent, currentContentPrefix, modelId);
   } else {
     sessionStart = prefixUserMessage(baseCurrent, contentPrefix, modelId);

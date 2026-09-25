@@ -12,6 +12,12 @@ const STRIP_RULES = [
   { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
   // GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
   { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
+  // Kimchi CLI catalog (models.dev, provider moonshotai) marks only some Kimi
+  // models as temperature-capable. Keep other sampling knobs dropped for all
+  // Kimchi because upstream llm.kimchi.dev historically rejects them.
+  { provider: "kimchi", match: /.*/i, drop: ["top_p", "presence_penalty", "frequency_penalty"] },
+  { provider: "kimchi", match: /kimi-k2\.(5|7)/i, drop: ["temperature"] },
+  { provider: "kimchi", match: (m) => !/(kimi|minimax)/i.test(m), drop: ["reasoning_effort", "reasoning"] },
   // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
   { provider: "cloudflare-ai", flattenContent: true },
   { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },

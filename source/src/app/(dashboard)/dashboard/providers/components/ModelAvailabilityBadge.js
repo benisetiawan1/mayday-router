@@ -41,6 +41,7 @@ export default function ModelAvailabilityBadge() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- periodic status poll with setInterval cleanup.
     fetchStatus();
     const interval = setInterval(fetchStatus, 30000);
     return () => clearInterval(interval);
@@ -121,7 +122,7 @@ export default function ModelAvailabilityBadge() {
               </span>
               <span className="text-sm font-semibold text-text-main">Model Status</span>
             </div>
-            <button
+            <button type="button"
               onClick={fetchStatus}
               className="p-1 rounded-lg hover:bg-surface text-text-muted hover:text-text-main transition-colors"
               title="Refresh"

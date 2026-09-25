@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import PropTypes from "prop-types";
 import { Badge, Button, Input, Modal, Select } from "@/shared/components";
 
 const VARIANT_CONFIG = {
@@ -53,9 +52,12 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   // openai: reset baseUrl when apiType changes; anthropic: reset checks when opened
   useEffect(() => {
     if (config.hasApiType) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived state from prop changes; uses updater pattern.
       setFormData((prev) => ({ ...prev, baseUrl: config.defaultBaseUrl }));
     } else if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset validation state when modal opens.
       setValidationResult(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset validation state when modal opens.
       setCheckKey("");
       setCheckModelId("");
     }
@@ -211,11 +213,5 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   );
 }
 
-AddCompatibleModal.propTypes = {
-  variant: PropTypes.oneOf(["openai", "anthropic"]).isRequired,
-  isOpen: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
-  onCreated: PropTypes.func.isRequired,
-};
 
 export default AddCompatibleModal;

@@ -34,10 +34,25 @@ const getErrorMessage = (error) => {
   return "Network connection failed - check URL and network connectivity";
 };
 
+// Normalize an Anthropic-compatible base URL so it ends with /v1.
+// Removes trailing slash and trailing /messages if the user pasted the full
+// endpoint, then appends /v1 if missing. This matches the runtime behavior
+// in open-sse/executors/default.js which appends /messages to the stored base.
+function normalizeAnthropicBaseUrl(baseUrl) {
+  let normalized = baseUrl.trim().replace(/\/$/, "");
+  if (normalized.endsWith("/messages")) {
+    normalized = normalized.slice(0, -"/messages".length);
+  }
+  if (!normalized.endsWith("/v1")) {
+    normalized = `${normalized}/v1`;
+  }
+  return normalized;
+}
+
 // Get status-specific error message for /models endpoint
 const getModelsErrorMessage = (status) => {
   if (status === 401 || status === 403) return "API key unauthorized";
-  if (status === 404) return "/models endpoint not found - try chat validation with model ID";
+  if (status === 404) return "Provider has no /models endpoint — enter a Model ID above to validate via chat instead";
   if (status >= 500) return "Server error - try again later";
   return `Unexpected response (${status})`;
 };
@@ -69,7 +84,7 @@ export async function POST(request) {
     // SSRF guard for remote callers; local host keeps self-hosted nodes (e.g. ollama-local)
     if (!isLocalRequest(request)) {
       try {
-        assertPublicUrl(baseUrl);
+        await assertPublicUrl(baseUrl);
       } catch {
         return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
       }
@@ -107,10 +122,7 @@ export async function POST(request) {
 
     // Anthropic Compatible Validation
     if (type === "anthropic-compatible") {
-      let normalizedBase = baseUrl.trim().replace(/\/$/, "");
-      if (normalizedBase.endsWith("/messages")) {
-        normalizedBase = normalizedBase.slice(0, -9);
-      }
+      const normalizedBase = normalizeAnthropicBaseUrl(baseUrl);
 
       const modelsUrl = `${normalizedBase}/models`;
       const res = await fetchWithTimeout(modelsUrl, {

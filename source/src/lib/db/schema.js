@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 8;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -75,6 +75,22 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_pp_status ON proxyPools(testStatus)",
     ],
   },
+  proxyPoolFitness: {
+    columns: {
+      poolId: "TEXT NOT NULL",
+      scope: "TEXT NOT NULL",
+      until: "INTEGER NOT NULL",
+      reason: "TEXT",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (poolId, scope)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_ppf_pool ON proxyPoolFitness(poolId)",
+      "CREATE INDEX IF NOT EXISTS idx_ppf_scope ON proxyPoolFitness(scope)",
+      "CREATE INDEX IF NOT EXISTS idx_ppf_until ON proxyPoolFitness(until)",
+    ],
+  },
   apiKeys: {
     columns: {
       id: "TEXT PRIMARY KEY",
@@ -92,6 +108,7 @@ export const TABLES = {
       name: "TEXT UNIQUE NOT NULL",
       kind: "TEXT",
       models: "TEXT NOT NULL",
+      context_length: "INTEGER",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },
@@ -114,6 +131,7 @@ export const TABLES = {
       model: "TEXT",
       connectionId: "TEXT",
       apiKey: "TEXT",
+      apiKeyName: "TEXT",
       endpoint: "TEXT",
       promptTokens: "INTEGER DEFAULT 0",
       completionTokens: "INTEGER DEFAULT 0",
@@ -142,6 +160,8 @@ export const TABLES = {
       provider: "TEXT",
       model: "TEXT",
       connectionId: "TEXT",
+      apiKey: "TEXT",
+      apiKeyName: "TEXT",
       status: "TEXT",
       data: "TEXT NOT NULL",
     },
@@ -152,7 +172,23 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
     ],
   },
+  cachedProviderModels: {
+    columns: {
+      providerId: "TEXT NOT NULL",
+      modelId: "TEXT NOT NULL",
+      kind: "TEXT DEFAULT 'llm'",
+      ownedBy: "TEXT NOT NULL",
+      capabilities: "TEXT",
+      updatedAt: "INTEGER NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (providerId, modelId)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_cpm_kind ON cachedProviderModels(kind)",
+      "CREATE INDEX IF NOT EXISTS idx_cpm_provider ON cachedProviderModels(providerId)",
+    ],
+  },
 };
+
 
 export function buildCreateTableSql(name, def) {
   const cols = Object.entries(def.columns).map(([k, v]) => `${k} ${v}`);

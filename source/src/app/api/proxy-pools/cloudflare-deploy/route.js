@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { RELAY_TARGET_GUARD_SOURCE } from "@/shared/utils/ssrfGuard.js";
+import { requireDashboardAuth } from "@/lib/auth/routeAuth.js";
 
 // Relay worker source code deployed to Cloudflare
 const RELAY_WORKER_CODE = `
+${RELAY_TARGET_GUARD_SOURCE}
 export default {
   async fetch(request, env, ctx) {
     const target = request.headers.get("x-relay-target");
@@ -15,7 +18,15 @@ export default {
       });
     }
 
-    const targetUrl = target.replace(/\\/$/, "") + relayPath;
+    let targetUrl;
+    try {
+      const base = target.replace(/\\/+$/, "");
+      const path = relayPath.startsWith("/") ? relayPath : "/" + relayPath;
+      targetUrl = base + path;
+      assertTrustedTarget(targetUrl);
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { "content-type": "application/json" } });
+    }
     const newRequestInit = {
       method: request.method,
       headers: new Headers(request.headers),
@@ -48,6 +59,7 @@ export default {
 
 // POST /api/proxy-pools/cloudflare-deploy
 export async function POST(request) {
+  if (!await requireDashboardAuth(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await request.json();
     const accountId = body.accountId?.trim();

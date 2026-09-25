@@ -73,10 +73,28 @@ const readConfig = async () => {
   }
 };
 
-// Check if config has 9Router settings
-const has9RouterConfig = (config) => {
+// Read auth.json
+const readAuth = async () => {
+  try {
+    const content = await fs.readFile(getCodexAuthPath(), "utf-8");
+    return JSON.parse(content);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+};
+
+// Read config.toml as parsed object
+const readConfigParsed = async () => {
+  const raw = await readConfig();
+  if (!raw) return null;
+  return parsedToWritable(parseTOML(raw));
+};
+
+// Check if config has Mayday settings
+const hasMaydayConfig = (config) => {
   if (!config) return false;
-  return config.includes("model_provider = \"9router\"") || config.includes("[model_providers.9router]");
+  return config.includes("model_provider = \"mayday\"") || config.includes("[model_providers.mayday]");
 };
 
 // GET - Check codex CLI and read current settings
@@ -97,16 +115,15 @@ export async function GET() {
     return NextResponse.json({
       installed: true,
       config,
-      has9Router: has9RouterConfig(config),
+      hasMayday: hasMaydayConfig(config),
       configPath: getCodexConfigPath(),
     });
   } catch (error) {
-    console.log("Error checking codex settings:", error);
     return NextResponse.json({ error: "Failed to check codex settings" }, { status: 500 });
   }
 }
 
-// POST - Update 9Router settings (merge with existing config)
+// POST - Update Mayday settings (merge with existing config)
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model, subagentModel } = await request.json();
@@ -122,22 +139,18 @@ export async function POST(request) {
     await fs.mkdir(codexDir, { recursive: true });
 
     // Read and parse existing config
-    let parsed = {};
-    try {
-      const existingConfig = await fs.readFile(configPath, "utf-8");
-      parsed = parsedToWritable(parseTOML(existingConfig));
-    } catch { /* No existing config */ }
+    let parsed = (await readConfigParsed()) || {};
 
-    // Update only 9Router related fields (api_key goes to auth.json, not config.toml)
+    // Update only Mayday related fields (api_key goes to auth.json, not config.toml)
     parsed.model = model;
-    parsed.model_provider = "9router";
+    parsed.model_provider = "mayday";
 
-    // Update or create 9router provider section (no api_key - Codex reads from auth.json)
+    // Update or create mayday provider section (no api_key - Codex reads from auth.json)
     // Ensure /v1 suffix is added only once
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
     // Custom providers ignore auth.json - the key must travel as a static header
-    setNestedSection(parsed, "model_providers.9router", {
-      name: "9Router",
+    setNestedSection(parsed, "model_providers.mayday", {
+      name: "Mayday",
       base_url: normalizedBaseUrl,
       wire_api: "responses",
       http_headers: { Authorization: `Bearer ${apiKey}` },
@@ -150,46 +163,38 @@ export async function POST(request) {
     // Write merged config
     const configContent = stringifyTOML(parsed);
     await fs.writeFile(configPath, configContent);
-
     return NextResponse.json({
       success: true,
       message: "Codex settings applied successfully!",
       configPath,
     });
   } catch (error) {
-    console.log("Error updating codex settings:", error);
     return NextResponse.json({ error: "Failed to update codex settings" }, { status: 500 });
   }
 }
 
-// DELETE - Remove 9Router settings only (keep other settings)
+// DELETE - Remove Mayday settings only (keep other settings)
 export async function DELETE() {
   try {
     const configPath = getCodexConfigPath();
 
     // Read and parse existing config
-    let parsed = {};
-    try {
-      const existingConfig = await fs.readFile(configPath, "utf-8");
-      parsed = parsedToWritable(parseTOML(existingConfig));
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return NextResponse.json({
-          success: true,
-          message: "No config file to reset",
-        });
-      }
-      throw error;
+    const parsed = await readConfigParsed();
+    if (!parsed) {
+      return NextResponse.json({
+        success: true,
+        message: "No config file to reset",
+      });
     }
 
-    // Remove 9Router related root fields only if they point to 9router
-    if (parsed.model_provider === "9router") {
+    // Remove Mayday related root fields only if they point to mayday
+    if (parsed.model_provider === "mayday") {
       delete parsed.model;
       delete parsed.model_provider;
     }
 
-    // Remove 9router provider section
-    deleteNestedSection(parsed, "model_providers.9router");
+    // Remove mayday provider section
+    deleteNestedSection(parsed, "model_providers.mayday");
 
     // Remove subagent configuration (both the current key and the legacy role form)
     deleteNestedSection(parsed, "agents.default_subagent_model");
@@ -201,9 +206,8 @@ export async function DELETE() {
 
     // Remove OPENAI_API_KEY from auth.json
     const authPath = getCodexAuthPath();
-    try {
-      const existingAuth = await fs.readFile(authPath, "utf-8");
-      const authData = JSON.parse(existingAuth);
+    const authData = await readAuth();
+    if (authData) {
       delete authData.OPENAI_API_KEY;
       delete authData.auth_mode;
 
@@ -213,14 +217,13 @@ export async function DELETE() {
       } else {
         await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
       }
-    } catch { /* No auth file */ }
+    }
 
     return NextResponse.json({
       success: true,
-      message: "9Router settings removed successfully",
+      message: "Mayday settings removed successfully",
     });
   } catch (error) {
-    console.log("Error resetting codex settings:", error);
     return NextResponse.json({ error: "Failed to reset codex settings" }, { status: 500 });
   }
 }

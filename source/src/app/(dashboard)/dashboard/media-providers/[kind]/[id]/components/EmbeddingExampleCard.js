@@ -37,9 +37,11 @@ export function EmbeddingExampleCard({ providerId, customAlias }) {
   const { copied: copiedRes, copy: copyRes } = useCopyToClipboard();
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-side hydration of window.location.origin.
     setLocalEndpoint(window.location.origin);
     fetch("/api/keys")
       .then((r) => r.json())
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch callback.
       .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
       .catch(() => {});
     fetch("/api/tunnel/status")

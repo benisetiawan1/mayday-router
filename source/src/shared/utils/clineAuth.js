@@ -1,1 +1,1 @@
-export * from "../../../open-sse/shared/clineAuth.js";
+export * from "open-sse/shared/clineAuth.js";

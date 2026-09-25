@@ -8,7 +8,7 @@ const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const TOOL_NAME_PATTERN = /[^a-zA-Z0-9_-]/g;
 
 function clone(value) {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
+  return value == null ? value : structuredClone(value);
 }
 
 function text(value) {
@@ -147,7 +147,7 @@ function normalizeTurns(history, currentMessage, modelId) {
   if (currentMessage) rawTurns.push(currentMessage);
   const turns = [];
 
-  for (const raw of rawTurns) {
+  for (const [rawIndex, raw] of rawTurns.entries()) {
     const isUser = !!raw?.userInputMessage;
     const isAssistant = !!raw?.assistantResponseMessage;
     if (isUser === isAssistant) continue;
@@ -156,6 +156,11 @@ function normalizeTurns(history, currentMessage, modelId) {
       ? { userInputMessage: clone(raw.userInputMessage) }
       : { assistantResponseMessage: clone(raw.assistantResponseMessage) };
     const previous = turns[turns.length - 1];
+    if (rawIndex === rawTurns.length - 1 && turn.userInputMessage && previous?.userInputMessage) {
+      turns.push({ assistantResponseMessage: { content: "..." } });
+      turns.push(turn);
+      continue;
+    }
     if (turn.userInputMessage && previous?.userInputMessage) {
       mergeUser(previous.userInputMessage, turn.userInputMessage);
     } else if (turn.assistantResponseMessage && previous?.assistantResponseMessage) {

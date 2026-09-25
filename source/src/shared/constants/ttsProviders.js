@@ -136,15 +136,13 @@ export const TTS_PROVIDER_CONFIG = {
     voicesPerModel: true,
   },
   "xiaomi-mimo": {
-    hasLanguageDropdown: false,
+    hasLanguageHint: true,
+    hasStyleInput: true,
     hasModelSelector: true,
     hasBrowseButton: false,
-    hasVoiceIdInput: false,
-    hasStyleInput: true, // style/voice instructions (role: user)
-    hasLanguageHint: true, // language dropdown (Auto-detect default); voices are language-independent
-    languageOptions: ["Chinese", "English"],
     voiceSource: "hardcoded",
     modelKey: "xiaomi-mimo-tts-models",
     voicesPerModel: true,
+    languageOptions: ["Chinese", "English"],
   },
 };

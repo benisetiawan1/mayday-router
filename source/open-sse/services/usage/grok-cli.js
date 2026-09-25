@@ -34,12 +34,8 @@ import { decodeGrokCreditsFrame } from "./grokCliQuotaFrame.js";
 const USAGE = U("grok-cli");
 const BILLING_URL = USAGE.url || "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 const USER_URL = USAGE.userUrl || "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
-
-// SuperGrok weekly pool.
 const GRPC_CREDITS_URL =
   "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
-// Empty gRPC-web request frame (flag 0 + length 0). Without it upstream returns
-// grpc-status 13 "Missing request message." with a 0-byte body.
 const GRPC_WEB_EMPTY_REQUEST_FRAME = Buffer.from([0, 0, 0, 0, 0]);
 
 /** Unwrap protobuf-json `{ val: n }` or plain numbers/strings. */
@@ -224,9 +220,6 @@ export function parseGrokCliBilling(billing, user = null) {
     };
   }
 
-  // SuperGrok weekly shared-pool usage (subscription tier). creditUsagePercent is
-  // the single total used %; productUsage is a breakdown legend, NOT independent
-  // quotas — never split it into separate bars.
   const usedPct = unwrapVal(
     config.creditUsagePercent ?? config.credit_usage_percent ?? root.creditUsagePercent,
     NaN,
@@ -297,12 +290,7 @@ export function parseGrokCliBilling(billing, user = null) {
   };
 }
 
-/**
- * Live SuperGrok weekly pool via gRPC-web GetGrokCreditsConfig.
- * Fail-open: any network/auth/parse failure returns null.
- * @returns {{ percentUsed: number, resetAt: string|null } | null}
- */
-export async function fetchGrokCliCreditsConfig(accessToken, proxyOptions = null) {
+async function fetchGrokCliCreditsConfig(accessToken, proxyOptions = null) {
   if (!accessToken) return null;
   try {
     const res = await proxyAwareFetch(
@@ -321,8 +309,7 @@ export async function fetchGrokCliCreditsConfig(accessToken, proxyOptions = null
     );
     if (!res?.ok) return null;
     const arrayBuffer = await res.arrayBuffer().catch(() => null);
-    if (!arrayBuffer) return null;
-    return decodeGrokCreditsFrame(Buffer.from(arrayBuffer));
+    return arrayBuffer ? decodeGrokCreditsFrame(Buffer.from(arrayBuffer)) : null;
   } catch {
     return null;
   }
@@ -330,11 +317,9 @@ export async function fetchGrokCliCreditsConfig(accessToken, proxyOptions = null
 
 function quotasFromGrpcCredits(decoded) {
   if (!decoded || !Number.isFinite(decoded.percentUsed)) return null;
-  // Round for bar display (fixed32 ratio * 100 can be 34.999… for 0.35)
-  const used = Math.round(Math.max(0, Math.min(100, decoded.percentUsed)));
   return {
     "Weekly SuperGrok": makeQuota({
-      used,
+      used: Math.round(Math.max(0, Math.min(100, decoded.percentUsed))),
       total: 100,
       resetAt: decoded.resetAt || null,
     }),
@@ -389,19 +374,14 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
     }
 
     const parsed = parseGrokCliBilling(billing, user);
-    parsed.plan = planFromAccessToken(accessToken) || parsed.plan;
+    // Prefer authoritative /v1/user plan if present; fallback to JWT claim
+    parsed.plan = parsed.plan || planFromAccessToken(accessToken);
 
     if (!parsed.quotas || Object.keys(parsed.quotas).length === 0) {
-      // Paid SuperGrok often returns cap=0 over REST but exposes the shared
-      // weekly pool on GetGrokCreditsConfig — try that before giving up.
-      const grpc = await fetchGrokCliCreditsConfig(accessToken, proxyOptions);
-      const grpcQuotas = quotasFromGrpcCredits(grpc);
-      if (grpcQuotas) {
-        return {
-          plan: parsed.plan,
-          quotas: grpcQuotas,
-        };
-      }
+      const grpcQuotas = quotasFromGrpcCredits(
+        await fetchGrokCliCreditsConfig(accessToken, proxyOptions),
+      );
+      if (grpcQuotas) return { plan: parsed.plan, quotas: grpcQuotas };
       return {
         plan: parsed.plan,
         message: parsed.subscriptionAccess

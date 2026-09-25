@@ -33,26 +33,47 @@ function normalizeProxyConfig(body = {}) {
   };
 }
 
-async function normalizeProxyPoolUpdate(proxyPoolIdInput) {
+const VALID_ROTATION_STRATEGIES = new Set(["none", "fill-first", "round-robin", "random", "smart"]);
+
+async function normalizeProxyPoolUpdate(body = {}) {
+  if (Object.prototype.hasOwnProperty.call(body, "proxyPoolIds")) {
+    const proxyPoolIds = Array.isArray(body.proxyPoolIds)
+      ? [...new Set(body.proxyPoolIds.map((id) => String(id).trim()).filter(Boolean))]
+      : [];
+    const proxyRotationStrategy = typeof body.proxyRotationStrategy === "string"
+      ? body.proxyRotationStrategy.trim().toLowerCase()
+      : "none";
+    if (!VALID_ROTATION_STRATEGIES.has(proxyRotationStrategy)) {
+      return { hasProxyPoolField: true, error: "Invalid proxy rotation strategy" };
+    }
+    for (const proxyPoolId of proxyPoolIds) {
+      if (!await getProxyPoolById(proxyPoolId)) {
+        return { hasProxyPoolField: true, error: "Proxy pool not found" };
+      }
+    }
+    return {
+      hasProxyPoolField: true,
+      proxyPoolId: null,
+      proxyPoolIds,
+      proxyRotationStrategy,
+    };
+  }
+
+  const proxyPoolIdInput = body.proxyPoolId;
   if (proxyPoolIdInput === undefined) {
     return { hasProxyPoolField: false, proxyPoolId: null };
   }
 
   if (proxyPoolIdInput === null || proxyPoolIdInput === "" || proxyPoolIdInput === "__none__") {
-    return { hasProxyPoolField: true, proxyPoolId: null };
+    return { hasProxyPoolField: true, proxyPoolId: null, proxyPoolIds: [] };
   }
 
   const proxyPoolId = String(proxyPoolIdInput).trim();
-  if (!proxyPoolId) {
-    return { hasProxyPoolField: true, proxyPoolId: null };
-  }
-
-  const proxyPool = await getProxyPoolById(proxyPoolId);
-  if (!proxyPool) {
+  if (!proxyPoolId) return { hasProxyPoolField: true, proxyPoolId: null, proxyPoolIds: [] };
+  if (!await getProxyPoolById(proxyPoolId)) {
     return { hasProxyPoolField: true, error: "Proxy pool not found" };
   }
-
-  return { hasProxyPoolField: true, proxyPoolId };
+  return { hasProxyPoolField: true, proxyPoolId, proxyPoolIds: [] };
 }
 
 function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, hasProxyPoolField) {
@@ -98,6 +119,8 @@ export async function PUT(request, { params }) {
       testStatus,
       lastError,
       lastErrorAt,
+      projectId,
+      isProjectIdManual,
       providerSpecificData
     } = body;
 
@@ -111,7 +134,7 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
     }
 
-    const proxyPoolResult = await normalizeProxyPoolUpdate(body.proxyPoolId);
+    const proxyPoolResult = await normalizeProxyPoolUpdate(body);
     if (proxyPoolResult.error) {
       return NextResponse.json({ error: proxyPoolResult.error }, { status: 400 });
     }
@@ -126,6 +149,8 @@ export async function PUT(request, { params }) {
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
+    if (projectId !== undefined) updateData.projectId = projectId;
+    if (isProjectIdManual !== undefined) updateData.isProjectIdManual = isProjectIdManual;
 
     if (
       shouldMergeProviderSpecificData(
@@ -151,6 +176,13 @@ export async function PUT(request, { params }) {
           delete updateData.providerSpecificData.proxyPoolId;
         } else {
           updateData.providerSpecificData.proxyPoolId = proxyPoolResult.proxyPoolId;
+        }
+        if (proxyPoolResult.proxyPoolIds?.length) {
+          updateData.providerSpecificData.proxyPoolIds = proxyPoolResult.proxyPoolIds;
+          updateData.providerSpecificData.proxyRotationStrategy = proxyPoolResult.proxyRotationStrategy;
+        } else {
+          delete updateData.providerSpecificData.proxyPoolIds;
+          delete updateData.providerSpecificData.proxyRotationStrategy;
         }
       }
     }

@@ -14,6 +14,19 @@ function getEffectiveStatus(conn) {
   return conn.testStatus === "unavailable" && !isCooldown ? "active" : conn.testStatus;
 }
 
+function WebProviderCardStatus({ isNoAuth, allDisabled, total, connected, error }) {
+  if (isNoAuth) return <Badge variant="success" size="sm">Ready</Badge>;
+  if (allDisabled) return <Badge variant="default" size="sm">Disabled</Badge>;
+  if (total === 0) return <span className="text-xs text-text-muted">No connections</span>;
+  return (
+    <>
+      {connected > 0 && <Badge variant="success" size="sm" dot>{connected} Connected</Badge>}
+      {error > 0 && <Badge variant="error" size="sm" dot>{error} Error</Badge>}
+      {connected === 0 && error === 0 && <Badge variant="default" size="sm">{total} Added</Badge>}
+    </>
+  );
+}
+
 function ProviderCard({ provider, kind, connections }) {
   const providerInfo = AI_PROVIDERS[provider.id];
   const isNoAuth = !!providerInfo?.noAuth;
@@ -22,19 +35,6 @@ function ProviderCard({ provider, kind, connections }) {
   const error = providerConns.filter((c) => { const s = getEffectiveStatus(c); return s === "error" || s === "expired" || s === "unavailable"; }).length;
   const total = providerConns.length;
   const allDisabled = total > 0 && providerConns.every((c) => c.isActive === false);
-
-  const renderStatus = () => {
-    if (isNoAuth) return <Badge variant="success" size="sm">Ready</Badge>;
-    if (allDisabled) return <Badge variant="default" size="sm">Disabled</Badge>;
-    if (total === 0) return <span className="text-xs text-text-muted">No connections</span>;
-    return (
-      <>
-        {connected > 0 && <Badge variant="success" size="sm" dot>{connected} Connected</Badge>}
-        {error > 0 && <Badge variant="error" size="sm" dot>{error} Error</Badge>}
-        {connected === 0 && error === 0 && <Badge variant="default" size="sm">{total} Added</Badge>}
-      </>
-    );
-  };
 
   return (
     <Link href={`/dashboard/media-providers/${kind}/${provider.id}`} className="group">
@@ -45,7 +45,7 @@ function ProviderCard({ provider, kind, connections }) {
             style={{ backgroundColor: `${provider.color?.length > 7 ? provider.color : (provider.color ?? "#888") + "15"}` }}
           >
             <ProviderIcon
-              src={`/providers/${provider.id}.png`}
+              src={`/providers/${provider.id}.webp`}
               alt={provider.name}
               size={30}
               className="object-contain rounded-lg max-w-[30px] max-h-[30px]"
@@ -55,7 +55,7 @@ function ProviderCard({ provider, kind, connections }) {
           </div>
           <div>
             <h3 className="font-semibold text-sm">{provider.name}</h3>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">{renderStatus()}</div>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap"><WebProviderCardStatus isNoAuth={isNoAuth} allDisabled={allDisabled} total={total} connected={connected} error={error} /></div>
           </div>
         </div>
       </Card>
@@ -83,7 +83,7 @@ function ComboList({ combos }) {
                   return (
                     <div key={`${entry}-${i}`} title={p?.name || entry} className="size-5 rounded flex items-center justify-center" style={{ backgroundColor: `${(p?.color ?? "#888")}15` }}>
                       <ProviderIcon
-                        src={`/providers/${pid}.png`}
+                        src={`/providers/${pid}.webp`}
                         alt={p?.name || pid}
                         size={18}
                         className="object-contain rounded max-w-[18px] max-h-[18px]"

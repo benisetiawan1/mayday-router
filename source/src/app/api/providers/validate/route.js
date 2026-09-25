@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
-import { getDefaultModel } from "open-sse/config/providerModels.js";
-import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
+import { getDefaultModel, getModelUpstreamId } from "open-sse/config/providerModels.js";
+import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS, PROVIDER_OAUTH } from "open-sse/config/providers.js";
+import { getKimchiUserAgent } from "open-sse/utils/kimchiUserAgent.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { resolveQoderCredentials, resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { cleanCookie } from "open-sse/utils/cookie.js";
+import { validateMuseSparkConnection } from "open-sse/executors/muse-spark-web.js";
+import { validateAgentRouterConnection } from "open-sse/executors/agentrouter.js";
+import { deriveValidateUrl } from "open-sse/providers/schema.js";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -35,11 +40,13 @@ async function probeWebProvider(provider, apiKey) {
 
   // Minimal body for POST endpoints; GET sends nothing
   if (cfg.method === "POST") {
-    body = JSON.stringify({ query: "ping", q: "ping", url: "https://example.com" });
+    body = provider === "exa"
+      ? JSON.stringify({ query: "ping", type: "instant", numResults: 1, contents: { highlights: true } })
+      : JSON.stringify({ query: "ping", q: "ping", url: "https://example.com" });
   }
 
   const res = await fetch(url, { method: cfg.method, headers, body, signal: AbortSignal.timeout(8000) });
-  return res.status !== 401 && res.status !== 403;
+  return res.status !== 401 && res.status !== 403 && res.status !== 402 && res.status !== 429;
 }
 
 // Probe a media provider (tts/embedding/stt/image/video) using *Config.
@@ -253,6 +260,22 @@ export async function POST(request) {
       }
 
       switch (provider) {
+        case "qoder": {
+          try {
+            const credentials = await resolveQoderCredentials(
+              { apiKey, providerSpecificData },
+              null,
+              AbortSignal.timeout(8000),
+            );
+            const result = await resolveQoderModels(credentials, { forceRefresh: true });
+            isValid = !!result?.models?.length;
+          } catch (err) {
+            error = err.message;
+            isValid = false;
+          }
+          break;
+        }
+
         case "openai":
           const openaiRes = await fetch("https://api.openai.com/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` },
@@ -303,8 +326,7 @@ export async function POST(request) {
         case "minimax-cn":
         case "alicode-intl":
         case "alims-intl":
-        case "alicode":
-        case "agentrouter": {
+        case "alicode": {
           // Use baseUrl from PROVIDERS (DRY); separate openai-format vs claude-format flow
           const cfg = PROVIDERS[provider];
           const isOpenAiFormat = provider === "glm-cn" || provider === "alicode" || provider === "alicode-intl" || provider === "alims-intl";
@@ -332,6 +354,11 @@ export async function POST(request) {
             // 400 = model resolution error but auth passed (e.g. agentrouter "no available channel")
             isValid = res.status !== 401 && res.status !== 403;
           }
+          break;
+        }
+
+        case "agentrouter": {
+          isValid = await validateAgentRouterConnection(apiKey);
           break;
         }
         case "volcengine-ark":
@@ -371,6 +398,7 @@ export async function POST(request) {
         case "chutes":
         case "xiaomi-mimo":
         case "xiaomi-tokenplan":
+        case "kimchi":
         case "nvidia": {
           const endpoints = {
             ...Object.fromEntries(
@@ -379,9 +407,11 @@ export async function POST(request) {
             // dynamic URLs (depend on providerSpecificData) — kept inline
             "ollama-local": `${resolveOllamaLocalHost({ providerSpecificData })}/api/tags`,
             "xiaomi-tokenplan": `${resolveXiaomiTokenplanBaseUrl({ providerSpecificData })}/models`,
+            "kimchi": PROVIDER_OAUTH.kimchi?.modelsUrl,
           };
           const headers = {};
           if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+          if (provider === "kimchi") headers["User-Agent"] = getKimchiUserAgent();
           const res = await fetch(endpoints[provider], { headers, signal: AbortSignal.timeout(8000) });
           // xai returns 400 for bad key, 403 for valid-but-no-credit. Other providers use 401.
           if (provider === "xai") {
@@ -441,20 +471,21 @@ export async function POST(request) {
         }
 
         case "blackbox": {
-          const res = await fetch("https://api.blackbox.ai/chat/completions", {
+          const probeModel = getModelUpstreamId("blackbox", "gpt-5.4") || "blackboxai/openai/gpt-5.4";
+          const res = await fetch("https://api.blackbox.ai/v1/chat/completions", {
             method: "POST",
             headers: {
               "Authorization": `Bearer ${apiKey}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "gpt-4o",
+              model: probeModel,
               messages: [{ role: "user", content: "test" }],
-              max_tokens: 10,
+              max_tokens: 1,
             }),
           });
-          // Returns 401 for invalid key, 200 for valid, 400 for malformed
-          isValid = res.status === 200 || res.status === 400;
+          // Returns 200 for valid, 400 for malformed payload with valid key, 401/403 for invalid
+          isValid = res.ok || res.status === 400;
           break;
         }
 
@@ -491,7 +522,7 @@ export async function POST(request) {
         }
 
         case "grok-web": {
-          const token = apiKey.startsWith("sso=") ? apiKey.slice(4) : apiKey;
+          const token = cleanCookie(apiKey, "sso");
           // Cloudflare-bypass: send POST with same browser fingerprint headers as GrokWebExecutor
           const randomHex = (n) => {
             const a = new Uint8Array(n);
@@ -545,10 +576,7 @@ export async function POST(request) {
         }
 
         case "perplexity-web": {
-          let sessionToken = apiKey;
-          if (sessionToken.startsWith("__Secure-next-auth.session-token=")) {
-            sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
-          }
+          const sessionToken = cleanCookie(apiKey, "__Secure-next-auth.session-token");
           const tz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
           const res = await fetch("https://www.perplexity.ai/rest/sse/perplexity_ask", {
             method: "POST",
@@ -582,36 +610,38 @@ export async function POST(request) {
           break;
         }
 
-        case "qoder": {
-          // PAT (pt-...) needs the job-token exchange before it can sign
-          // anything — the generic OpenAI-compat probe below can't validate it.
-          try {
-            const resolved = await resolveQoderCredentials({ apiKey, providerSpecificData }, null, AbortSignal.timeout(8000));
-            const result = await resolveQoderModels(resolved, { forceRefresh: true });
-            isValid = !!result?.models?.length;
-          } catch (err) {
+        case "muse-spark-web": {
+          const ok = await validateMuseSparkConnection(apiKey);
+          if (!ok) {
             isValid = false;
-            error = err.message;
+            error = "Invalid session cookie — re-paste ecto_1_sess from meta.ai";
+          } else {
+            isValid = true;
           }
           break;
         }
 
         default: {
-          // Generic probe for OpenAI-compatible providers (config-driven from PROVIDERS)
+          // Generic probe from the registry transport. Registry metadata is the
+          // canonical provider contract; do not require a second legacy config entry.
           const cfg = PROVIDERS[provider];
-          if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) {
+          if (!cfg || !cfg.baseUrl) {
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }
           if (cfg.noAuth) {
             isValid = true;
             break;
           }
-          // Build auth headers based on cfg.authHeader (default: bearer)
+          // Build auth headers based on registry metadata (default: bearer).
           const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
-          if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = apiKey;
-          else headers["Authorization"] = `Bearer ${apiKey}`;
-          // Try /models first (fast GET), fallback to chat probe on ambiguous response
-          const modelsUrl = cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
+          // Mirror executors/default.js setAuth: registry auth block wins, Bearer default.
+          if (cfg.auth?.header) {
+            headers[cfg.auth.header] = cfg.auth.scheme === "bearer" ? `Bearer ${apiKey}` : apiKey;
+          } else {
+            headers["Authorization"] = `Bearer ${apiKey}`;
+          }
+          // Prefer an explicit registry validation URL; derive the common path otherwise.
+          const modelsUrl = deriveValidateUrl(cfg);
           let probeOk = null;
           try {
             const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });

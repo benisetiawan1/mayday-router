@@ -1,4 +1,5 @@
-import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
+import { KIRO_CONFIG } from "../constants/oauth.js";
+import { assertValidKiroRegion } from "open-sse/config/awsRegion.js";
 
 /**
  * Kiro OAuth Service
@@ -17,7 +18,7 @@ export class KiroService {
    * Returns clientId and clientSecret for device code flow
    */
   async registerClient(region = "us-east-1") {
-    assertValidAwsRegion(region);
+    assertValidKiroRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
     const response = await fetch(endpoint, {
@@ -51,7 +52,7 @@ export class KiroService {
    * Start device authorization for AWS Builder ID or IDC
    */
   async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1") {
-    assertValidAwsRegion(region);
+    assertValidKiroRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
     const response = await fetch(endpoint, {
@@ -86,7 +87,7 @@ export class KiroService {
    * Poll for token using device code (AWS Builder ID/IDC)
    */
   async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1") {
-    assertValidAwsRegion(region);
+    assertValidKiroRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
     const response = await fetch(endpoint, {
@@ -180,7 +181,7 @@ export class KiroService {
     // AWS SSO OIDC refresh (Builder ID or IDC)
     if (clientId && clientSecret) {
       const safeRegion = region || "us-east-1";
-      assertValidAwsRegion(safeRegion);
+      assertValidKiroRegion(safeRegion);
       const endpoint = `https://oidc.${safeRegion}.amazonaws.com/token`;
 
       const response = await fetch(endpoint, {
@@ -260,12 +261,14 @@ export class KiroService {
   }
 
   /**
-   * List available CodeWhisperer profiles for OAuth/IDC tokens and return the
-   * best-matching profileArn. API keys use the Amazon Q model catalog instead;
-   * ListAvailableProfiles does not support TokenType=API_KEY.
+   * List available CodeWhisperer profiles for a token (or API key) and return
+   * the best-matching profileArn. AWS SSO OIDC logins return no profileArn, so
+   * it must be fetched separately — the same call works for API-key auth.
+   * Accepts both `arn` and `profileArn` response field names (the API-key
+   * JSON-1.0 surface returns `arn`).
    */
   async listAvailableProfiles(accessToken, region = "us-east-1") {
-    assertValidAwsRegion(region);
+    assertValidKiroRegion(region);
     const endpoint = `https://codewhisperer.${region}.amazonaws.com`;
 
     const response = await fetch(endpoint, {
@@ -292,41 +295,10 @@ export class KiroService {
   }
 
   /**
-   * Validate an API key against the Amazon Q model catalog. A bearer-only call
-   * to ListAvailableProfiles can return HTTP 200 with an empty list for an
-   * arbitrary key, so it is not proof that the key can run inference.
-   */
-  async listAvailableApiKeyModels(apiKey, region = "us-east-1") {
-    assertValidAwsRegion(region);
-    const params = new URLSearchParams({ origin: "AI_EDITOR" });
-    const endpoint = `https://q.${region}.amazonaws.com/ListAvailableModels?${params}`;
-    const response = await fetch(endpoint, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "TokenType": "API_KEY",
-        "Accept": "application/json",
-        "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
-        "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to list API-key models: ${error}`);
-    }
-
-    const data = await response.json();
-    const models = Array.isArray(data?.models) ? data.models : [];
-    if (models.length === 0) {
-      throw new Error("API key returned no available models");
-    }
-    return models;
-  }
-
-  /**
-   * Validate an API-key credential through the same Amazon Q surface used for
-   * inference. API keys are account-bound but do not require a profileArn.
+   * Validate an API-key credential by listing profiles with it. API keys are
+   * long-lived bearer tokens (no refresh), so the only way to validate one is
+   * to make an authenticated CodeWhisperer call. Returns a credential object
+   * ready to persist as a "kiro" connection with authMethod="api_key".
    */
   async validateApiKey(apiKey, region = "us-east-1") {
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
@@ -334,8 +306,9 @@ export class KiroService {
     }
     const trimmed = apiKey.trim();
 
+    let profileArn = null;
     try {
-      await this.listAvailableApiKeyModels(trimmed, region);
+      profileArn = await this.listAvailableProfiles(trimmed, region);
     } catch (error) {
       throw new Error(`API key validation failed: ${error.message}`);
     }
@@ -343,7 +316,7 @@ export class KiroService {
     return {
       accessToken: trimmed,
       refreshToken: null,
-      profileArn: null,
+      profileArn,
       region,
       authMethod: "api_key",
     };

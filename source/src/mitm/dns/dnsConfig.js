@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { log, err } = require("../logger");
-const { TOOL_HOSTS } = require("../../shared/constants/mitmToolHosts.js");
+const { TOOL_HOSTS } = require("../../shared/constants/mitmToolHosts.cjs");
 const { runElevatedPowerShell, isAdmin } = require("../winElevated.js");
 
 /**
@@ -12,8 +12,8 @@ const { runElevatedPowerShell, isAdmin } = require("../winElevated.js");
  * If anything fails mid-way, restore from `.bak`. Same-volume renames are atomic on NTFS.
  */
 function atomicWriteHostsWin(target, originalContent, newContent) {
-  const tmpNew = `${target}.9router.new`;
-  const tmpBak = `${target}.9router.bak`;
+  const tmpNew = `${target}.mayday.new`;
+  const tmpBak = `${target}.mayday.bak`;
   try {
     fs.writeFileSync(tmpNew, newContent, "utf8");
     try { fs.unlinkSync(tmpBak); } catch { /* none */ }
@@ -218,13 +218,13 @@ async function removeDNSEntry(tool, sudoPassword) {
  * Remove ALL tool DNS entries (used when stopping server)
  */
 async function removeAllDNSEntries(sudoPassword) {
-  for (const tool of Object.keys(TOOL_HOSTS)) {
+  await Promise.all(Object.keys(TOOL_HOSTS).map(async (tool) => {
     try {
       await removeDNSEntry(tool, sudoPassword);
     } catch (e) {
       err(`DNS ${tool}: failed to remove — ${e.message}`);
     }
-  }
+  }));
 }
 
 /**

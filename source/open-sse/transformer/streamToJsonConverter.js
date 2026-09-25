@@ -30,9 +30,16 @@ function processSSEMessage(msg, state) {
   } else if (eventType === "response.completed" || eventType === "response.done") {
     state.status = "completed";
     if (parsed.response?.usage) {
-      state.usage.input_tokens = parsed.response.usage.input_tokens || 0;
-      state.usage.output_tokens = parsed.response.usage.output_tokens || 0;
-      state.usage.total_tokens = parsed.response.usage.total_tokens || 0;
+      const usage = parsed.response.usage;
+      state.usage.input_tokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
+      state.usage.output_tokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
+      state.usage.total_tokens = usage.total_tokens ?? (state.usage.input_tokens + state.usage.output_tokens);
+      if (usage.input_tokens_details) {
+        state.usage.input_tokens_details = usage.input_tokens_details;
+      }
+      if (usage.output_tokens_details) {
+        state.usage.output_tokens_details = usage.output_tokens_details;
+      }
     }
   } else if (eventType === "response.failed") {
     state.status = "failed";
@@ -51,7 +58,6 @@ export async function convertResponsesStreamToJson(stream) {
     return { id: `resp_${Date.now()}`, object: "response", created_at: Math.floor(Date.now() / 1000), status: "failed", output: [], usage: { ...EMPTY_RESPONSE } };
   }
 
-  const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
@@ -63,26 +69,22 @@ export async function convertResponsesStreamToJson(stream) {
     items: new Map()
   };
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  for await (const value of stream) {
+    buffer += decoder.decode(value, { stream: true });
+    const messages = buffer.split("\n\n");
+    buffer = messages.pop() || "";
 
-      buffer += decoder.decode(value, { stream: true });
-      const messages = buffer.split("\n\n");
-      buffer = messages.pop() || "";
-
-      for (const msg of messages) {
-        processSSEMessage(msg, state);
-      }
+    for (const msg of messages) {
+      processSSEMessage(msg, state);
     }
+  }
 
-    // Flush remaining buffer (last event may not end with \n\n)
-    if (buffer.trim()) {
-      processSSEMessage(buffer, state);
-    }
-  } finally {
-    reader.releaseLock();
+  // Flush decoder before processing the final event.
+  buffer += decoder.decode();
+
+  // Flush remaining buffer (last event may not end with \n\n)
+  if (buffer.trim()) {
+    processSSEMessage(buffer, state);
   }
 
   // Build output array from accumulated items (ordered by index)

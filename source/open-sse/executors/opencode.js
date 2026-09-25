@@ -1,17 +1,19 @@
-import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import crypto from "node:crypto";
 import { resolveSessionId } from "../utils/sessionManager.js";
-import { isMuseSparkModel } from "../providers/models/helpers.js";
+
+// OpenCode free tier limits requests per egress IP.
+const IP_LIMIT_BODY = /limit|rate|quota|exhausted|capacity|too many|retry/i;
+
+// Models that use /zen/v1/messages (claude format)
+const MESSAGES_MODELS = new Set();
 
 const OPENCODE_UA = "opencode";
 // Models served by /zen/v1/responses; every other model stays on /chat/completions.
-const RESPONSES_MODELS = new Set([
-  "muse-spark-1.2-contributor-free",
-  "muse-spark-1.3-contributor-free",
-]);
+const RESPONSES_MODELS = new Set(["muse-spark-1.2-contributor-free"]);
 
 function generateRequestId() {
   return `msg_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -27,8 +29,7 @@ function baseModelId(model) {
 }
 
 function isResponsesModel(model) {
-  const base = baseModelId(model);
-  return RESPONSES_MODELS.has(base) || isMuseSparkModel(base);
+  return RESPONSES_MODELS.has(baseModelId(model));
 }
 
 function resolveOpencodeSession(body, credentials) {
@@ -64,15 +65,14 @@ function normalizeOpencodeReasoning(model, body) {
   if (!body.reasoning.summary) body.reasoning.summary = "auto";
   delete body.reasoning_effort;
 }
-
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
-    this._currentSessionId = null;
   }
 
   transformRequest(model, body, stream, credentials) {
     this._currentSessionId = resolveOpencodeSession(body, credentials);
+    if (credentials) credentials.runtimeOpencodeSession = this._currentSessionId;
     if (isResponsesModel(model)) {
       // Responses API names the output cap max_output_tokens and takes thinking
       // as reasoning:{effort,summary} — normalize the Chat fields at this boundary.
@@ -95,22 +95,29 @@ export class OpenCodeExecutor extends BaseExecutor {
   }
 
   buildHeaders(credentials, stream = true) {
-    const raw = credentials?.rawHeaders || {};
-    const lower = {};
-    for (const [k, v] of Object.entries(raw)) lower[k.toLowerCase()] = v;
-
-    const downstreamUa = lower["user-agent"] || "";
-    const isOpencodeDownstream = downstreamUa.toLowerCase().includes("opencode");
-
+    const raw = Object.fromEntries(Object.entries(credentials?.rawHeaders || {}).map(([k, v]) => [k.toLowerCase(), v]));
     return {
       "Content-Type": "application/json",
       "Authorization": "Bearer public",
-      "User-Agent": isOpencodeDownstream ? downstreamUa : OPENCODE_UA,
-      "x-opencode-client": lower["x-opencode-client"] || "desktop",
-      "x-opencode-session": lower["x-opencode-session"] || this._currentSessionId || generateSessionId(),
-      "x-opencode-request": lower["x-opencode-request"] || generateRequestId(),
-      "x-opencode-project": lower["x-opencode-project"] || "global",
-      "Accept": stream ? "text/event-stream" : "*/*",
+      "User-Agent": raw["user-agent"]?.toLowerCase().includes("opencode") ? raw["user-agent"] : "opencode",
+      "x-opencode-client": raw["x-opencode-client"] || "desktop",
+      "x-opencode-session": raw["x-opencode-session"] || credentials?.runtimeOpencodeSession || `ses_${crypto.randomUUID().replaceAll("-", "")}`,
+      "x-opencode-request": raw["x-opencode-request"] || `msg_${crypto.randomUUID().replaceAll("-", "")}`,
+      "x-opencode-project": raw["x-opencode-project"] || "global",
+      "Accept": stream ? "text/event-stream" : "*/*"
     };
+  }
+
+  parseError(response, bodyText) {
+    const status = response?.status || 0;
+    const text = String(bodyText || "");
+    if ((status === 429 || status === 403) && IP_LIMIT_BODY.test(text)) {
+      return {
+        status,
+        message: text.slice(0, 300) || `OpenCode free limit (${status})`,
+        poolScoped: { reason: "ip-limit" },
+      };
+    }
+    return null;
   }
 }

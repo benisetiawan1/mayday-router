@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { RELAY_TARGET_GUARD_SOURCE } from "@/shared/utils/ssrfGuard.js";
+import { requireDashboardAuth } from "@/lib/auth/routeAuth.js";
 
 const DENO_V2_API = "https://api.deno.com/v2";
 
 const DENO_RELAY_CODE = `Deno.serve(async (request) => {
+  ${RELAY_TARGET_GUARD_SOURCE}
   const target = request.headers.get("x-relay-target");
   const relayPath = request.headers.get("x-relay-path") || "/";
 
@@ -14,7 +17,15 @@ const DENO_RELAY_CODE = `Deno.serve(async (request) => {
     });
   }
 
-  const targetUrl = target.replace(/\\/$/, "") + relayPath;
+  let targetUrl;
+  try {
+    const base = target.replace(/\\/+$/, "");
+    const path = relayPath.startsWith("/") ? relayPath : "/" + relayPath;
+    targetUrl = base + path;
+    assertTrustedTarget(targetUrl);
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { "content-type": "application/json" } });
+  }
   const newHeaders = new Headers(request.headers);
   newHeaders.delete("x-relay-target");
   newHeaders.delete("x-relay-path");
@@ -45,6 +56,7 @@ const DENO_RELAY_CODE = `Deno.serve(async (request) => {
 });`;
 
 export async function POST(request) {
+  if (!await requireDashboardAuth(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await request.json();
     const denoToken = body.denoToken?.trim();
@@ -69,7 +81,7 @@ export async function POST(request) {
       headers,
       body: JSON.stringify({
         slug: projectName,
-        labels: { "custom.kind": "9router-relay" },
+        labels: { "custom.kind": "mayday-relay" },
         config: {
           install: "deno install",
           runtime: {
@@ -81,13 +93,13 @@ export async function POST(request) {
     });
 
     if (!createAppRes.ok) {
-      const text = await createAppRes.text().catch(() => "");
       if (createAppRes.status === 409) {
         return NextResponse.json(
           { error: `App "${projectName}" already exists. Choose a different name.` },
           { status: 409 }
         );
       }
+      const text = await createAppRes.text().catch(() => "");
       return NextResponse.json(
         { error: `Failed to create app (${createAppRes.status}): ${text}` },
         { status: createAppRes.status }
@@ -127,21 +139,22 @@ export async function POST(request) {
     const revisionId = revision.id;
 
     let status = revision.status;
-    let attempts = 0;
-    const maxAttempts = 30; // 30 * 2s = 60s max
-    while (status === "queued" || status === "building") {
-      if (attempts >= maxAttempts) {
-        throw new Error("Deploy timed out after 60 seconds");
-      }
+    const maxMs = 60000;
+    const deadline = Date.now() + maxMs;
+
+    async function pollStatus() {
+      if (Date.now() >= deadline) throw new Error("Deploy timed out after 60 seconds");
       await new Promise((resolve) => setTimeout(resolve, 2000));
       const statusRes = await fetch(`${DENO_V2_API}/revisions/${revisionId}`, {
         headers: { Authorization: `Bearer ${denoToken}` },
       });
-      if (!statusRes.ok) break;
+      if (!statusRes.ok) return;
       const statusData = await statusRes.json();
       status = statusData.status;
-      attempts++;
+      if (status === "queued" || status === "building") return pollStatus();
     }
+
+    if (status === "queued" || status === "building") await pollStatus();
 
     if (status !== "succeeded") {
       await fetch(`${DENO_V2_API}/apps/${app.id}`, {

@@ -169,11 +169,26 @@ function accumulateAssistantText(body) {
     if (!items) return "";
     let text = "";
     for (const item of items) {
-        if (item?.role !== "assistant") continue;
-        if (typeof item.content === "string") text += item.content;
-        else if (Array.isArray(item.content)) {
-            for (const c of item.content) text += c?.text || c?.output || "";
+        if (!item || typeof item !== "object") continue;
+        const isAssistant = item.role === "assistant" || item.type === "function_call" || item.type === "custom_tool_call";
+        if (!isAssistant) continue;
+
+        if (typeof item.content === "string") {
+            text += item.content;
+        } else if (Array.isArray(item.content)) {
+            for (const c of item.content) text += c?.text || c?.output || (typeof c === "string" ? c : "");
         }
+
+        if (Array.isArray(item.tool_calls)) {
+            for (const tc of item.tool_calls) {
+                text += `${tc?.function?.name || ""}:${tc?.function?.arguments || ""}`;
+            }
+        }
+
+        if (item.name || item.arguments) {
+            text += `${item.name || ""}:${item.arguments || ""}`;
+        }
+
         if (text.length >= ASSISTANT_CAP_LEN) break;
     }
     return text;

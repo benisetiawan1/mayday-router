@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 const REGISTRY_URL = "https://api.anthropic.com/mcp-registry/v0/servers";
 const VISIBILITY = "commercial,gsuite,gsuite-google";
 const CACHE_TTL_MS = 60 * 60 * 1000;
-const G_KEY = "__9routerCoworkMcpRegistryCache";
+const G_KEY = "__maydayCoworkMcpRegistryCache";
 
 function gcache() {
   if (!globalThis[G_KEY]) globalThis[G_KEY] = { ts: 0, data: null };
@@ -23,11 +23,12 @@ function isDirectConnect(url) {
 
 async function fetchAll() {
   const out = [];
-  let cursor = "";
-  for (let i = 0; i < 20; i++) {
+
+  async function fetchPage(cursor, remaining) {
+    if (remaining <= 0) return;
     const url = `${REGISTRY_URL}?limit=500&visibility=${VISIBILITY}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
     const r = await fetch(url, { headers: { accept: "application/json" } });
-    if (!r.ok) break;
+    if (!r.ok) return;
     const j = await r.json();
     for (const item of j.servers || []) {
       const s = item.server || {};
@@ -50,9 +51,11 @@ async function fetchAll() {
         iconUrl: meta.iconUrl || null,
       });
     }
-    cursor = j.metadata?.nextCursor;
-    if (!cursor) break;
+    const nextCursor = j.metadata?.nextCursor;
+    if (nextCursor) await fetchPage(nextCursor, remaining - 1);
   }
+
+  await fetchPage("", 20);
   // Dedupe by url
   const seen = new Set();
   return out.filter((s) => (seen.has(s.url) ? false : (seen.add(s.url), true)));

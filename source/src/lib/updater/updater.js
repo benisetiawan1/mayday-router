@@ -9,7 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
-const packageName = process.env.UPDATER_PKG_NAME || "9router";
+const packageName = process.env.UPDATER_PKG_NAME || "mayday";
 const port = parseInt(process.env.UPDATER_PORT || "20129", 10);
 const tailLines = parseInt(process.env.UPDATER_TAIL_LINES || "8", 10);
 const maxRetries = parseInt(process.env.UPDATER_RETRIES || "3", 10);
@@ -24,9 +24,9 @@ const appPort = parseInt(process.env.UPDATER_APP_PORT || "20128", 10);
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
   if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router");
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "mayday");
   }
-  return path.join(os.homedir(), ".9router");
+  return path.join(os.homedir(), ".mayday");
 }
 const updateDir = path.join(getDataDir(), "update");
 try { fs.mkdirSync(updateDir, { recursive: true }); } catch { /* best effort */ }
@@ -113,15 +113,22 @@ async function waitForAppExit() {
 
   // Poll app port until free or max timeout
   const deadline = Date.now() + (waitMaxMs - waitMinMs);
-  while (Date.now() < deadline) {
+
+  async function pollPort() {
     const busy = await isAppPortBusy();
     if (!busy) {
       pushLog(`[updater] app port :${appPort} is free, proceeding`);
       return;
     }
+    if (Date.now() >= deadline) {
+      pushLog(`[updater] timeout waiting for app, proceeding anyway`);
+      return;
+    }
     await sleep(waitCheckMs);
+    return pollPort();
   }
-  pushLog(`[updater] timeout waiting for app, proceeding anyway`);
+
+  await pollPort();
 }
 
 function sleep(ms) {
@@ -186,6 +193,7 @@ async function waitForAppAndOpenBrowser() {
   while (Date.now() < deadline) {
     const busy = await isAppPortBusy();
     if (busy) {
+      // SECURITY: opens user's own browser to local dashboard — no remote exposure
       openBrowser(`http://localhost:${appPort}/dashboard`);
       pushLog(`[updater] app ready, opened dashboard`);
       return;

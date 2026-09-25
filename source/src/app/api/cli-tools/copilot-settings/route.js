@@ -30,37 +30,36 @@ const readConfig = async () => {
   }
 };
 
-const has9RouterConfig = (config) => {
+const hasMaydayConfig = (config) => {
   if (!Array.isArray(config)) return false;
-  return config.some((entry) => entry.name === "9Router");
+  return config.some((entry) => entry.name === "Mayday");
 };
 
-const get9RouterEntry = (config) => {
+const getMaydayEntry = (config) => {
   if (!Array.isArray(config)) return null;
-  return config.find((entry) => entry.name === "9Router") || null;
+  return config.find((entry) => entry.name === "Mayday") || null;
 };
 
 // GET - Read current copilot config
 export async function GET() {
   try {
     const config = await readConfig();
-    const entry = get9RouterEntry(config);
+    const entry = getMaydayEntry(config);
 
     return NextResponse.json({
       installed: true,
       config,
-      has9Router: has9RouterConfig(config),
+      hasMayday: hasMaydayConfig(config),
       configPath: getConfigPath(),
       currentModel: entry?.models?.[0]?.id || null,
       currentUrl: entry?.models?.[0]?.url || null,
     });
   } catch (error) {
-    console.log("Error checking copilot settings:", error);
     return NextResponse.json({ error: "Failed to check copilot settings" }, { status: 500 });
   }
 }
 
-// POST - Apply 9Router config to chatLanguageModels.json
+// POST - Apply Mayday config to chatLanguageModels.json
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, models } = await request.json();
@@ -73,18 +72,14 @@ export async function POST(request) {
     await fs.mkdir(path.dirname(configPath), { recursive: true });
 
     // Read existing config array
-    let config = [];
-    try {
-      const existing = await fs.readFile(configPath, "utf-8");
-      const parsed = JSON.parse(existing);
-      config = Array.isArray(parsed) ? parsed : [];
-    } catch { /* No existing config */ }
+    const parsed = await readConfig();
+    let config = Array.isArray(parsed) ? parsed : [];
 
     const endpointUrl = `${baseUrl}/chat/completions#models.ai.azure.com`;
-    const keyToUse = apiKey || "sk_9router";
+    const keyToUse = apiKey || "sk_mayday";
 
     const newEntry = {
-      name: "9Router",
+      name: "Mayday",
       vendor: "azure",
       apiKey: keyToUse,
       models: models.map((id) => ({
@@ -98,8 +93,8 @@ export async function POST(request) {
       })),
     };
 
-    // Replace existing 9Router entry or append
-    const idx = config.findIndex((e) => e.name === "9Router");
+    // Replace existing Mayday entry or append
+    const idx = config.findIndex((e) => e.name === "Mayday");
     if (idx >= 0) {
       config[idx] = newEntry;
     } else {
@@ -114,37 +109,30 @@ export async function POST(request) {
       configPath,
     });
   } catch (error) {
-    console.log("Error updating copilot settings:", error);
     return NextResponse.json({ error: "Failed to update copilot settings" }, { status: 500 });
   }
 }
 
-// DELETE - Remove 9Router entry from chatLanguageModels.json
+// DELETE - Remove Mayday entry from chatLanguageModels.json
 export async function DELETE() {
   try {
     const configPath = getConfigPath();
 
     let config = [];
-    try {
-      const existing = await fs.readFile(configPath, "utf-8");
-      const parsed = JSON.parse(existing);
-      config = Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return NextResponse.json({ success: true, message: "No config file to reset" });
-      }
-      throw error;
+    const parsed = await readConfig();
+    if (!parsed) {
+      return NextResponse.json({ success: true, message: "No config file to reset" });
     }
+    config = Array.isArray(parsed) ? parsed : [];
 
-    config = config.filter((e) => e.name !== "9Router");
+    config = config.filter((e) => e.name !== "Mayday");
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
 
     return NextResponse.json({
       success: true,
-      message: "9Router removed from Copilot config",
+      message: "Mayday removed from Copilot config",
     });
   } catch (error) {
-    console.log("Error resetting copilot settings:", error);
     return NextResponse.json({ error: "Failed to reset copilot settings" }, { status: 500 });
   }
 }

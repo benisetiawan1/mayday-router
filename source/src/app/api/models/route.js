@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { getModelAliases, setModelAlias, getCustomModels } from "@/models";
+import { getModelAliases, setModelAlias } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { AI_MODELS } from "@/shared/constants/config";
-import { getProviderAlias } from "@/shared/constants/providers";
+import { AI_PROVIDERS, getProviderAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { fetchModelsFetcherIds } from "@/sse/services/allowedModels.js";
 
 // GET /api/models - Get models with aliases
 export async function GET() {
@@ -37,34 +38,30 @@ export async function GET() {
         };
       });
 
-    // Custom models ride along; their stored caps override the name heuristic
-    const seenFull = new Set(models.map((m) => m.fullModel));
-    const customModels = (await getCustomModels()).filter((m) => {
-      if (!m?.id || (m.kind || m.type || "llm") !== "llm") return false;
-      return !seenFull.has(`${m.providerAlias}/${m.id}`);
-    });
-    for (const m of customModels) {
-      const fullModel = `${m.providerAlias}/${m.id}`;
-      const c = getCapabilitiesForModel(m.providerAlias, m.id);
-      models.push({
-        provider: m.providerAlias,
-        model: m.id,
-        name: m.name || m.id,
-        fullModel,
-        routedModel: fullModel,
-        alias: modelAliases[fullModel] || m.id,
-        caps: {
-          vision: c.vision,
-          search: c.search,
-          reasoning: c.reasoning,
-          contextWindow: c.contextWindow,
-          maxOutput: c.maxOutput,
-          ...(m.caps || {}),
-        },
-      });
+    // Include dynamic fetcher models for noAuth/passthrough providers (e.g. opencode)
+    // so the ACL dialog can list models for providers whose catalog is not static.
+    let extra = [];
+    for (const [providerId, providerInfo] of Object.entries(AI_PROVIDERS)) {
+      if (!providerInfo?.noAuth || !providerInfo?.modelsFetcher) continue;
+      const fetcherIds = await fetchModelsFetcherIds(providerId, providerInfo);
+      if (!fetcherIds.length) continue;
+      const providerAlias = getProviderAlias(providerId) || providerInfo.alias || providerId;
+      for (const modelId of fetcherIds) {
+        const fullModel = `${providerId}/${modelId}`;
+        if (models.some((m) => m.fullModel === fullModel)) continue;
+        extra.push({
+          provider: providerAlias,
+          model: modelId,
+          name: modelId,
+          fullModel,
+          routedModel: `${providerAlias}/${modelId}`,
+          alias: modelId,
+          caps: {},
+        });
+      }
     }
 
-    return NextResponse.json({ models });
+    return NextResponse.json({ models: [...models, ...extra] });
   } catch (error) {
     console.log("Error fetching models:", error);
     return NextResponse.json({ error: "Failed to fetch models" }, { status: 500 });

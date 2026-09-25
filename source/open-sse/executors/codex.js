@@ -127,6 +127,7 @@ function resolveCacheSessionId(body, credentials) {
 
 function normalizeReasoningEffort(model, value) {
   const supportedLevels = getThinkingLevels("codex", model);
+  if (value === "ultra" && /gpt-5\.6-(sol|terra)/i.test(model || "")) return value;
   if (supportedLevels?.includes(value)) return value;
   if (value === "ultra" && supportedLevels?.includes("max")) return "max";
   if (value === "max" || value === "ultra") return "xhigh";

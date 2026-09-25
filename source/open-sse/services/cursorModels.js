@@ -144,7 +144,32 @@ async function fetchCursorCatalog(credentials, signal) {
   delete headers["connect-accept-encoding"];
   delete headers["connect-protocol-version"];
 
-  const response = await http2PostProto(url, headers, new Uint8Array(), signal, FETCH_TIMEOUT_MS);
+  const body = new Uint8Array();
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: signal || AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (response.status === 200) return parseCursorUsableModels(new Uint8Array(await response.arrayBuffer()));
+    if (response.status > 0) {
+      const error = new Error(`Cursor GetUsableModels returned ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+  } catch (error) {
+    if (error?.status) throw error;
+    // Node fetch may not negotiate Cursor's HTTP/2-only endpoint.
+  }
+
+  const response = await http2PostProto(
+    url,
+    headers,
+    body,
+    signal || AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    FETCH_TIMEOUT_MS
+  );
   if (response.status !== 200) {
     const error = new Error(`Cursor GetUsableModels returned ${response.status}`);
     error.status = response.status;

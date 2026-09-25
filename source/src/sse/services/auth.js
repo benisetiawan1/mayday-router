@@ -1,4 +1,4 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProviderNodeById, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
@@ -21,51 +21,39 @@ function extractCleanErrorMessage(errorText) {
   if (jsonMatch && jsonMatch[1]) return jsonMatch[1];
   return errorText.length > 200 ? errorText.slice(0, 200) : errorText;
 }
+import { classify429 } from "open-sse/utils/classify429.js";
+import { resolveAntigravityProxyConfig } from "open-sse/utils/proxyFetch.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
-import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { resolveProviderId, FREE_PROVIDERS, AI_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
 import * as log from "../utils/logger.js";
 
-// Mutex to prevent race conditions during account selection
-let selectionMutex = Promise.resolve();
+// Re-export the internal-trust gate so handlers can import it alongside the
+// other ACL helpers. Implementation lives in internalTrust.js (dependency-light
+// + independently unit-tested for exploit resistance).
+export { isTrustedInternalRequest } from "./internalTrust.js";
 
-// Model availability cache: fast-skip fully exhausted models without disabling API keys
-const availabilityCache = new Map();
-const AVAILABILITY_CACHE_TTL = 10000;
-const AVAILABILITY_CACHE_TTL_ZERO = 60000;
+// Per-provider mutex — allows parallel credential selection across different providers
+// while preventing races within the same provider's account rotation.
+const _providerMutexes = new Map();
 
-function getAvailKey(provider, model) {
-  return `${provider}:${model || '*all'}`;
+export function filterConnectionsForModel(providerId, connections, model, settings = {}) {
+  const override = (settings.providerStrategies || {})[providerId] || {};
+  if (providerId !== "freebuff" || override.strictModelAssignment !== true || !model) return connections;
+  return connections.filter((connection) => {
+    const data = connection.providerSpecificData || {};
+    const assignedModel = Object.prototype.hasOwnProperty.call(data, "assignedModel")
+      ? data.assignedModel
+      : (providerId === "freebuff" ? data.freebuffModel : null);
+    return assignedModel === model;
+  });
 }
 
-function checkCachedAvailable(provider, model) {
-  const k = getAvailKey(provider, model);
-  const c = availabilityCache.get(k);
-  if (c && Date.now() - c.t < (c.avail === 0 ? AVAILABILITY_CACHE_TTL_ZERO : AVAILABILITY_CACHE_TTL)) return c.avail;
-  return null;
-}
-
-function setCachedAvailable(provider, model, avail) {
-  const k = getAvailKey(provider, model);
-  availabilityCache.set(k, { avail, t: Date.now() });
-  if (availabilityCache.size > 500) {
-    const cutoff = Date.now() - AVAILABILITY_CACHE_TTL_ZERO;
-    for (const [key, v] of availabilityCache) if (v.t < cutoff) availabilityCache.delete(key);
+function getProviderMutex(provider) {
+  if (!_providerMutexes.has(provider)) {
+    _providerMutexes.set(provider, Promise.resolve());
   }
-}
-
-function invalidateAvailability(provider, model) {
-  const k = getAvailKey(provider, model);
-  availabilityCache.delete(k);
-}
-
-const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
-
-function githubMonthlyResetMs(status, errorText, provider) {
-  if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
-  if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
-  const now = new Date();
-  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+  return _providerMutexes.get(provider);
 }
 
 /**
@@ -81,10 +69,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     ? excludeConnectionIds
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
-  // Acquire mutex to prevent race conditions
-  const currentMutex = selectionMutex;
+  // Acquire per-provider mutex to prevent race conditions within same provider
+  const currentMutex = getProviderMutex(provider);
   let resolveMutex;
-  selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
+  _providerMutexes.set(provider, new Promise(resolve => { resolveMutex = resolve; }));
 
   try {
     await currentMutex;
@@ -101,9 +89,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (strategy !== "none") {
         const allPools = await getProxyPools({ isActive: true });
         const poolIds = allPools.filter(p => p.proxyUrl).map(p => p.id);
-        pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+        const scope = `${providerId}::${model || "*"}`;
+        pickedId = pickProxyPoolId(poolIds, strategy, providerId, { scope });
       }
       const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
+      const selectedPoolIds = strategy !== "none"
+        ? (await getProxyPools({ isActive: true })).filter((p) => p.proxyUrl).map((p) => p.id)
+        : [];
       return {
         id: "noauth",
         connectionName: "Public",
@@ -115,20 +107,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           connectionNoProxy: resolvedProxy.connectionNoProxy,
           connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
           vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+          proxyPoolId: resolvedProxy.proxyPoolId || null,
+          strictProxy: resolvedProxy.strictProxy === true,
+          proxyPoolIds: selectedPoolIds,
+          proxyRotationStrategy: strategy,
+          proxyPoolScope: `${providerId}::${model || "*"}`,
         },
       };
     }
 
-    // Fast-skip: known zero-available model from short-lived cache
-    if (model) {
-      const cachedAvail = checkCachedAvailable(provider, model);
-      if (cachedAvail === 0) {
-        log.debug("AUTH", `${provider}/${model} | fast-skip: 0 available (cache)`);
-        return { allRateLimited: true, retryAfter: null, retryAfterHuman: null, lastError: "All connections exhausted for this model", lastErrorCode: null };
-      }
-    }
-
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    let connections = await getProviderConnections({ provider: providerId, isActive: true });
+    const settings = await getSettings();
+    connections = filterConnectionsForModel(providerId, connections, model, settings);
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {
@@ -140,7 +130,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const isAntigravity = providerId === "antigravity";
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
 
-    // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
+    // Filter out model-locked, excluded, and Antigravity quota-exhausted connections
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
@@ -156,30 +146,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return true;
     });
 
-    // Mayday Patch 36: Self-healing cleanup of expired transient modelLock_* fields.
-    // isModelLockActive() above already SKIPS expired locks (so selection is correct at runtime),
-    // but the stale field lingers in the DB forever unless that exact key later succeeds a
-    // request (clearAccountError only fires on success). Left uncleaned, hundreds of expired
-    // modelLock_ entries accumulate and make the dashboard over-report "limit" state.
-    // Here we proactively strip expired modelLock_* fields during selection (fire-and-forget,
-    // never blocks the request). Permanent modelExhausted_* flags are NEVER touched.
-    const nowMs = Date.now();
-    for (const c of connections) {
-      const expiredLocks = Object.keys(c).filter(k =>
-        k.startsWith("modelLock_") && c[k] && new Date(c[k]).getTime() <= nowMs
-      );
-      if (expiredLocks.length > 0) {
-        const clearObj = {};
-        for (const k of expiredLocks) clearObj[k] = null;
-        updateProviderConnection(c.id, clearObj).catch(() => {});
-      }
-    }
-
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
-    if (model) {
-      setCachedAvailable(provider, model, availableConnections.length);
-      log.debug("AUTH", `${provider}/${model} | cache-set: ${availableConnections.length}`);
-    }
     connections.forEach(c => {
       const excluded = excludeSet.has(c.id);
       const locked = isModelLockActive(c, model);
@@ -190,38 +157,32 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     });
 
     if (availableConnections.length === 0) {
-      // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing.
+      // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing
       const lockedConns = connections.filter(c => isModelLockActive(c, model));
-      const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
+      const expiries = lockedConns.flatMap(c => { const t = getEarliestModelLockUntil(c); return t ? [t] : []; });
       if (isAntigravity && model && antigravityQuotaCache) {
         connections.forEach((c) => {
           const resetAt = antigravityQuotaCache.get(c.id)?.[model]?.resetAt;
           if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
         });
       }
-      const earliest = expiries.sort()[0] || null;
+      const earliest = expiries.length > 0 ? expiries.reduce((a, b) => a < b ? a : b) : null;
       if (earliest) {
         const earliestConn = lockedConns[0];
         log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
         return {
           allRateLimited: true,
+          connectionId: earliestConn?.id || null,
           retryAfter: earliest,
           retryAfterHuman: formatRetryAfter(earliest),
           lastError: earliestConn?.lastError || null,
           lastErrorCode: earliestConn?.errorCode || null
         };
       }
-      log.warn("AUTH", `${provider} | all ${connections.length} accounts exhausted/unavailable for ${model || "all"}`);
-      return {
-        allRateLimited: true,
-        retryAfter: null,
-        retryAfterHuman: null,
-        lastError: "All connections exhausted for this model",
-        lastErrorCode: null
-      };
+      log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
+      return null;
     }
 
-    const settings = await getSettings();
     // Per-provider strategy overrides global setting
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
@@ -240,7 +201,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
       // Sort by lastUsed (most recent first) to find current candidate
-      const byRecency = [...availableConnections].sort((a, b) => {
+      const byRecency = availableConnections.toSorted((a, b) => {
         if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
         if (!a.lastUsedAt) return 1;
         if (!b.lastUsedAt) return -1;
@@ -260,7 +221,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         });
       } else {
         // Pick the least recently used (excluding current if possible)
-        const sortedByOldest = [...availableConnections].sort((a, b) => {
+        const sortedByOldest = availableConnections.toSorted((a, b) => {
           if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
           if (!a.lastUsedAt) return -1;
           if (!b.lastUsedAt) return 1;
@@ -280,7 +241,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       connection = availableConnections[0];
     }
 
-    const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+    const psdForProxy = providerId === "freebuff"
+      ? { ...(connection.providerSpecificData || {}), proxyPoolScope: `${providerId}::${model || ""}` }
+      : connection.providerSpecificData?.proxyPoolIds?.length
+        ? { ...connection.providerSpecificData, proxyPoolScope: `${providerId}::${model || ""}` }
+        : connection.providerSpecificData;
+    const resolvedProxy = providerId === "antigravity"
+      ? resolveAntigravityProxyConfig(psdForProxy)
+      : await resolveConnectionProxyConfig(psdForProxy || {}, connection.id);
 
     return {
       authType: connection.authType,
@@ -301,6 +269,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connectionNoProxy: resolvedProxy.connectionNoProxy,
         connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        proxyPoolId: resolvedProxy.proxyPoolId || null,
+        noFitPool: resolvedProxy.noFitPool === true,
+        strictProxy: resolvedProxy.strictProxy === true,
       },
       connectionId: connection.id,
       // Include current status for optimization check
@@ -324,20 +295,19 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * @param {string|null} model - The specific model that triggered the error
  * @returns {{ shouldFallback: boolean, cooldownMs: number }}
  */
-export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, body = null) {
+export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, options = {}) {
+  const { body } = options;
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
   const connections = await getProviderConnections({ provider });
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
 
-  // GitHub premium-request exhaustion is account-wide until the next UTC month.
-  const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
-
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel;
-  if (githubResetAtMs) {
+  const isA6 = provider === "a6api" || provider === "a6api-cli";
+  if (isA6 && status !== 401 && status !== 402 && status !== 404) {
     shouldFallback = true;
-    cooldownMs = githubResetAtMs - Date.now();
+    cooldownMs = 3000; // 3 seconds cooldown for all non-401/402/404 errors
     newBackoffLevel = 0;
   } else if (resetsAtMs && resetsAtMs > Date.now()) {
     shouldFallback = true;
@@ -346,32 +316,41 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       ? resetsAtMs - Date.now()
       : Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
     newBackoffLevel = 0;
+  } else if (status === 429) {
+    // Use classify429 for all 429 responses so rate_limit, quota_exhausted,
+    // and daily_quota get deterministic, semantically correct cooldowns
+    // instead of generic exponential backoff. This also prevents the daily
+    // quota lock set earlier in the request path from being overwritten with
+    // a shorter backoff cooldown.
+    const classification = classify429({ status, body: errorText, provider });
+    shouldFallback = true;
+    cooldownMs = classification.cooldownMs;
+    newBackoffLevel = backoffLevel;
   } else {
     ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel));
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
-  const reason = typeof errorText === "string" ? extractCleanErrorMessage(errorText).slice(0, 100) : "Provider error";
+  // When the circuit-breaker / loop-guard toggle is OFF, do NOT write a per-account
+  // model lock (mirrors chat behavior when the toggle is disabled). We still return
+  // shouldFallback so the request falls through to the next account/provider, but we
+  // leave the account lock state untouched.
+  const disableLock = options && options.disableLock === true;
 
-  // Mayday Patch 10: Account-level lock for pay-as-you-go providers (Mimo: limit per API key, not per model)
+  if (disableLock) {
+    // Toggle OFF: skip the lock write entirely so the account stays usable.
+    return { shouldFallback: true, cooldownMs };
+  }
+
+  // Mayday Patch P23: DashScope per-model quota exhaustion detection
+  // Detect "free quota has been exhausted" and mark modelExhausted_${model} = true (permanent)
+  // instead of temporary modelLock_${model}. This shows ⚠️ Limit indicator in dashboard.
   const connPrefix = conn?.providerSpecificData?.prefix;
-  const isAccountLevel = connPrefix === "mm"; // Mimo: pay-as-you-go, limit per key
-  const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : (isAccountLevel ? null : model), cooldownMs);
-
-  // Mayday Patch 23: DashScope free quota exhaustion → permanent modelExhausted_ flag only.
-  // Match by prefix ("md") OR resolved provider id ("dashscope-intl") so keys added via the
-  // built-in registry (no providerSpecificData.prefix) still lock.
-  // NOTE: DashScope returns 403 for some models (deepseek-v4-pro) but 400 for others
-  // (kimi-k2.7-code) on quota exhaustion — accept both status codes.
-  // GUARD: DashScope ALSO returns the SAME "free quota has been exhausted" text for
-  // context-window overflow (e.g. kimi with a huge prompt). That is NOT an API-key limit —
-  // the key stays usable for normal requests. Per user request, context-window overflow must
-  // NOT leave any permanent marker on the API-provider page. So if the estimated input tokens
-  // exceed the model's context window, skip the permanent modelExhausted_ mark entirely.
   const isDashscope = connPrefix === "md" || provider === "dashscope-intl";
   const isQuotaExhausted = isDashscope && (status === 403 || status === 400) &&
     typeof errorText === 'string' &&
     errorText.toLowerCase().includes('free quota has been exhausted');
+  
   if (isQuotaExhausted && model) {
     // Rough token estimate (chars / 3.5) — detect context-window overflow before marking.
     let estTokens = 0;
@@ -393,74 +372,45 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     if (isContextOverflow) {
       const ctxWindow = Math.round(caps.contextWindow / 1000) + 'K';
       const connNameCtx = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-      log.warn("AUTH", `⚠️ ${connNameCtx} ${model} — "free quota" text but est. ${estTokens} tokens > ${ctxWindow} context window → treating as context overflow, NOT marking key (still usable)`);
+      console.warn(`⚠️ ${connNameCtx} ${model} — "free quota" text but est. ${estTokens} tokens > ${ctxWindow} context window → treating as context overflow, NOT marking key (still usable)`);
       // Do NOT mark modelExhausted_. Let the upstream error reach the client.
       return { shouldFallback: false, cooldownMs: 0 };
     }
+    // Mark model as permanently exhausted
+    const lockUpdate = buildModelLockUpdate(model, cooldownMs);
     lockUpdate[`modelExhausted_${model}`] = true;
     delete lockUpdate[`modelLock_${model}`];
     const connNameExhaust = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-    log.warn("AUTH", `⚠️ ${connNameExhaust} modelExhausted_${model} [PERMANENT quota exhausted]`);
+    console.warn(`⚠️ ${connNameExhaust} modelExhausted_${model} [PERMANENT quota exhausted]`);
+    
+    await updateProviderConnection(connectionId, lockUpdate);
+    return { shouldFallback: true, cooldownMs };
   }
 
-  // Mayday Patch 23c: Context window exceeded → STOP fallback loop + clear error to client.
-  // DashScope returns 400 "Range of input length should..." when request exceeds the model's
-  // context window. Without this, every key gets a 30s transient lock and 9router loops all
-  // ~600 keys (15-30 min "stuck") before returning the error to the client.
-  // IMPORTANT: This is NOT an API-key limit — the key is still usable for normal-size requests.
-  // So we do NOT mark modelExhausted_ (that would permanently skip the key). We just stop the
-  // fallback loop immediately and let the upstream error reach the client with a clear cause.
-  const isContextTooLong = isDashscope && status === 400 &&
-    typeof errorText?.toLowerCase?.() === 'string' &&
-    errorText.toLowerCase().includes('range of input length');
-  if (isContextTooLong && model) {
-    const caps = getCapabilitiesForModel(provider, model);
-    const ctxWindow = caps?.contextWindow ? Math.round(caps.contextWindow / 1000) + 'K' : 'model';
-    const connNameCtx = conn?.displayName || conn?.name || conn?.email || connectionId?.slice(0, 8);
-    log.warn("AUTH", `⚠️ ${connNameCtx} context window exceeded (~${ctxWindow}) for ${model} — stopping fallback loop (key still usable)`);
-    return { shouldFallback: false, cooldownMs: 0 };
-  }
+  const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
+  const lockUpdate = buildModelLockUpdate(model, cooldownMs);
 
-  // Mayday Patch 23d/35: Content-safety filter (DashScope DataInspectionFailed) → STOP fallback,
-  // do NOT mark the key. This 400 "Input text data may contain inappropriate content" is an
-  // INPUT problem (the user's prompt tripped the safety filter), NOT an API-key/quota limit.
-  // Previously it fell through to the default transient lock and marked testStatus=unavailable,
-  // which could permanently skip a perfectly usable key. So we stop the loop and let the
-  // upstream error reach the client unchanged — the key stays usable for other prompts.
-  const isContentFiltered = isDashscope && status === 400 &&
-    typeof errorText?.toLowerCase?.() === 'string' && (
-      errorText.toLowerCase().includes('data_inspection_failed') ||
-      errorText.toLowerCase().includes('inappropriate content') ||
-      errorText.toLowerCase().includes('DataInspectionFailed')
-    );
-  if (isContentFiltered && model) {
-    const connNameCf = conn?.displayName || conn?.name || conn?.email || connectionId?.slice(0, 8);
-    log.warn("AUTH", `⚠️ ${connNameCf} content-filter hit (${model}) — NOT marking key (input problem, key still usable)`);
-    return { shouldFallback: false, cooldownMs: 0 };
-  }
+  // Only persist lastError for temporary/server errors (429, 5xx) and quota exhaustion.
+  // Client errors (4xx like 400) are transient and should NOT be saved to DB
+  // to prevent false positive skip detection and persistent UI errors.
+  const isTemporaryError = status === 429 || (status >= 500 && status <= 599);
+  const isQuotaExhaustion = isQuotaExhausted; // P23: already handled above, but guard here
 
-  // Persist lock: modelExhausted_ flag is in lockUpdate (set by isQuotaExhausted block above).
-  // For DashScope quota exhaustion, skip lastError/errorCode — the "Limit: model_name" marker
-  // is the only signal needed. Showing a verbose "free quota" message risks false impression
-  // that the entire API key is dead, when only the marked model is exhausted.
-  const updateData = {
+  await updateProviderConnection(connectionId, {
     ...lockUpdate,
     testStatus: "unavailable",
+    lastError: (isTemporaryError || isQuotaExhaustion) ? reason : null,
+    errorCode: (isTemporaryError || isQuotaExhaustion) ? status : null,
+    lastErrorAt: (isTemporaryError || isQuotaExhaustion) ? new Date().toISOString() : null,
     backoffLevel: newBackoffLevel ?? backoffLevel
-  };
-  if (!isQuotaExhausted) {
-    updateData.lastError = reason;
-    updateData.errorCode = status;
-    updateData.lastErrorAt = new Date().toISOString();
-  }
-  await updateProviderConnection(connectionId, updateData);
+  });
 
   const lockKey = Object.keys(lockUpdate)[0];
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${model ? model + ' ' : ''}${status}]`);
+  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
 
   if (provider && status && reason) {
-    console.error(`❌ ${provider} [${model ? model + ' - ' : ''}${status}]: ${reason}`);
+    console.error(`❌ ${provider} [${status}]: ${reason}`);
   }
 
   return { shouldFallback: true, cooldownMs };
@@ -502,12 +452,14 @@ export async function clearAccountError(connectionId, currentConnection, model =
 
   const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
 
-  // Always reset testStatus — connection IS healthy even if other modelLocks remain active.
-  // Never clear modelExhausted_* flags (permanent quota exhaustion).
-  Object.assign(clearObj, { testStatus: "active" });
-  if (remainingActiveLocks.length === 0) {
-    Object.assign(clearObj, { lastError: null, lastErrorAt: null, errorCode: null, backoffLevel: 0 });
-  }
+  // Mayday: Always reset error state when any model succeeds, even if other locks remain
+  Object.assign(clearObj, {
+    testStatus: "active",
+    lastError: null,
+    errorCode: null,
+    lastErrorAt: null,
+    backoffLevel: 0
+  });
 
   await updateProviderConnection(connectionId, clearObj);
 }
@@ -532,9 +484,78 @@ export function extractApiKey(request) {
 }
 
 /**
- * Validate API key (optional - for local use can skip)
+ * Validate API key and return key info (including allowedProviders)
+ * Returns null if invalid, or the key object if valid
  */
 export async function isValidApiKey(apiKey) {
-  if (!apiKey) return false;
+  if (!apiKey) return null;
   return await validateApiKey(apiKey);
 }
+
+/**
+ * Check if a provider is allowed for a given API key info object.
+ * null = all allowed (default). [] = none allowed. [x] = only x.
+ *
+ * For openai-compatible / anthropic-compatible / custom-embedding providers
+ * (whose ids embed a UUID suffix), the connection's node prefix is also
+ * accepted as a match — the UUID-suffixed id is not user-meaningful and
+ * /v1/models lists these under their prefix alias.
+ */
+const _nodePrefixCache = new Map(); // id -> { prefix, expires }
+const NODE_PREFIX_CACHE_TTL_MS = 30000;
+async function getNodePrefix(providerId) {
+  const cached = _nodePrefixCache.get(providerId);
+  if (cached && cached.expires > Date.now()) return cached.prefix;
+  try {
+    const node = await getProviderNodeById(providerId);
+    const prefix = node?.prefix || null;
+    _nodePrefixCache.set(providerId, { prefix, expires: Date.now() + NODE_PREFIX_CACHE_TTL_MS });
+    return prefix;
+  } catch {
+    _nodePrefixCache.set(providerId, { prefix: null, expires: Date.now() + NODE_PREFIX_CACHE_TTL_MS });
+    return null;
+  }
+}
+export async function isProviderAllowed(apiKeyInfo, providerIdOrAlias) {
+  if (!apiKeyInfo) return true;
+  const allowed = apiKeyInfo.allowedProviders;
+  if (allowed === null || allowed === undefined) return true; // null = all
+  if (!Array.isArray(allowed) || allowed.length === 0) return false; // [] = none
+  if (allowed.includes(providerIdOrAlias)) return true;
+  const alias = getProviderAlias(providerIdOrAlias);
+  if (alias !== providerIdOrAlias && allowed.includes(alias)) return true;
+  const resolvedId = resolveProviderId(providerIdOrAlias);
+  if (resolvedId !== providerIdOrAlias && allowed.includes(resolvedId)) return true;
+  if (isOpenAICompatibleProvider(providerIdOrAlias) || isAnthropicCompatibleProvider(providerIdOrAlias) || isCustomEmbeddingProvider(providerIdOrAlias)) {
+    const prefix = await getNodePrefix(providerIdOrAlias);
+    if (prefix && allowed.includes(prefix)) return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a combo name is allowed for a given API key.
+ * null = all allowed (default). [] = none allowed. [x] = only x.
+ */
+export function isComboAllowed(apiKeyInfo, comboName) {
+  if (!apiKeyInfo) return true;
+  const name = comboName.startsWith("combo/") ? comboName.slice(6) : comboName;
+  const allowed = apiKeyInfo.allowedCombos;
+  if (allowed === null || allowed === undefined) return true;
+  if (!Array.isArray(allowed) || allowed.length === 0) return false;
+  return allowed.includes(name);
+}
+
+/**
+ * Check if a request kind is allowed for a given API key.
+ * Kinds: "llm", "embedding", "image", "tts", "stt", "web"
+ * null = all allowed (default). [] = none allowed. [x] = only x.
+ */
+export function isKindAllowed(apiKeyInfo, kind) {
+  if (!apiKeyInfo) return true;
+  const allowed = apiKeyInfo.allowedKinds;
+  if (allowed === null || allowed === undefined) return true; // null = all
+  if (!Array.isArray(allowed) || allowed.length === 0) return false; // [] = none
+  return allowed.includes(kind);
+}
+

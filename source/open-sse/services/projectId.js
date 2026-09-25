@@ -30,7 +30,7 @@ const CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
 let _cleanupTimer = null;
 
 /** Run one sweep immediately: evict stale cache entries and abort orphaned pending fetches. */
-export function cleanupNow() {
+function cleanupNow() {
     const now = Date.now();
 
     for (const [id, entry] of projectIdCache) {
@@ -64,7 +64,7 @@ export function startCacheCleanup() {
 }
 
 /** Stop the periodic background cleanup (e.g. during graceful shutdown). */
-export function stopCacheCleanup() {
+function stopCacheCleanup() {
     if (!_cleanupTimer) return;
     clearInterval(_cleanupTimer);
     _cleanupTimer = null;
@@ -203,8 +203,7 @@ async function onboardUser(accessToken, tierID, externalSignal, endpoints, provi
 
     const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
     const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
-    const MAX_ATTEMPTS = Number(process.env.ONBOARD_MAX_ATTEMPTS) || 2;
-    const BASE_RETRY_DELAY_MS = Number(process.env.ONBOARD_RETRY_DELAY_MS) || 12_000;
+    const MAX_ATTEMPTS = 3;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         // Bail out immediately if the connection was removed
@@ -212,7 +211,7 @@ async function onboardUser(accessToken, tierID, externalSignal, endpoints, provi
 
         // Per-attempt timeout controller; forwards external abort as well
         const localCtrl = new AbortController();
-        const timeoutId = setTimeout(() => localCtrl.abort(), 30_000);
+        const timeoutId = setTimeout(() => localCtrl.abort(), 5_000);
         const forwardAbort = () => localCtrl.abort();
         externalSignal?.addEventListener("abort", forwardAbort);
 
@@ -242,10 +241,9 @@ async function onboardUser(accessToken, tierID, externalSignal, endpoints, provi
                 throw new Error("onboardUser done but no project_id in response");
             }
 
-            // Server not done yet – wait and retry with jitter
-            const jitter = Math.floor(Math.random() * 5000);
+            // Server not done yet – wait and retry
             console.log(`[ProjectId] Onboard attempt ${attempt}/${MAX_ATTEMPTS}: not done yet, waiting...`);
-            await new Promise(resolve => setTimeout(resolve, BASE_RETRY_DELAY_MS + jitter));
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
         } catch (error) {
             clearTimeout(timeoutId);
@@ -258,10 +256,9 @@ async function onboardUser(accessToken, tierID, externalSignal, endpoints, provi
                 console.warn(`[ProjectId] onboardUser failed after ${MAX_ATTEMPTS} attempts: ${error.message}`);
                 return null;
             }
-            // Wait with jitter before retrying
-            const jitter = Math.floor(Math.random() * 5000);
+            // Continue to next attempt instead of throwing (which would skip remaining retries)
             console.warn(`[ProjectId] onboardUser attempt ${attempt} failed: ${error.message}, retrying...`);
-            await new Promise(resolve => setTimeout(resolve, BASE_RETRY_DELAY_MS + jitter));
+            await new Promise(resolve => setTimeout(resolve, 2000));
         } finally {
             clearTimeout(timeoutId);
             externalSignal?.removeEventListener("abort", forwardAbort);

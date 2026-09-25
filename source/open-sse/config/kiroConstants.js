@@ -23,46 +23,16 @@ export const KIRO_THINKING_SUFFIX = "-thinking";
 export const KIRO_TOOL_NAME_MAX_LENGTH = 64;
 export const KIRO_TOOL_DESCRIPTION_MAX_LENGTH = 10237;
 export const KIRO_TOOL_ID_MAX_LENGTH = 64;
-export const KIRO_CODEWHISPERER_TARGET =
-  "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
-export const KIRO_ENDPOINT_FALLBACK_STATUSES = new Set([401, 403, 404]);
 
-// Public default CodeWhisperer profile ARNs (us-east-1), keyed by auth method.
-// Used when an account cannot resolve its own profileArn. Builder ID and social
-// (Google/GitHub) sign-ins map to different shared profiles.
-export const KIRO_DEFAULT_PROFILE_ARNS = {
-  "builder-id": "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
-  social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
-};
-
-// Back-compat single default (Builder ID).
-export const KIRO_DEFAULT_PROFILE_ARN = KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
-
-/** Resolve the shared default profileArn for a given auth method. */
-export function resolveDefaultProfileArn(authMethod) {
-  const social = authMethod === "google" || authMethod === "github";
-  return social ? KIRO_DEFAULT_PROFILE_ARNS.social : KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
-}
-
-export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
-
-/**
- * Resolve a Kiro model after consuming the generic model(level) suffix.
- * The suffix is a 9router request override, not part of Kiro's upstream model id.
- */
+/** Resolve a Kiro model after consuming the generic model(level) suffix. */
 export function resolveKiroModelIntent(model) {
   const { cleanModel, override } = parseSuffix(model);
-  return {
-    model: cleanModel,
-    ...resolveKiroModel(cleanModel),
-    thinkingOverride: override,
-  };
+  return { model: cleanModel, ...resolveKiroModel(cleanModel), thinkingOverride: override };
 }
 
 /** Apply a parsed model(level) override without mutating the caller's body. */
 export function applyKiroThinkingOverride(body, override) {
   if (!override) return body;
-
   const next = { ...body };
   if (override.mode === "budget") {
     delete next.output_config;
@@ -71,13 +41,31 @@ export function applyKiroThinkingOverride(body, override) {
     next.thinking = { type: "enabled", budget_tokens: override.budget };
     return next;
   }
-
   next.output_config = {
     ...(body.output_config || {}),
     effort: override.mode === "level" ? override.level : override.mode,
   };
   return next;
 }
+
+// Public default CodeWhisperer profile ARNs (us-east-1), keyed by auth method.
+// Used when an account cannot resolve its own profileArn. Builder ID and social
+// (Google/GitHub) sign-ins map to different shared profiles.
+const KIRO_DEFAULT_PROFILE_ARNS = {
+  "builder-id": "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
+  social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
+};
+
+// Back-compat single default (Builder ID).
+const KIRO_DEFAULT_PROFILE_ARN = KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+
+/** Resolve the shared default profileArn for a given auth method. */
+export function resolveDefaultProfileArn(authMethod) {
+  const social = authMethod === "google" || authMethod === "github";
+  return social ? KIRO_DEFAULT_PROFILE_ARNS.social : KIRO_DEFAULT_PROFILE_ARNS["builder-id"];
+}
+
+const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 
 export const KIRO_AGENTIC_SYSTEM_PROMPT = `
 # CRITICAL: CHUNKED WRITE PROTOCOL (MANDATORY)
@@ -272,7 +260,7 @@ export function isThinkingEnabled(body, headers, model) {
  * @param {string} model
  * @returns {boolean}
  */
-export function isAgenticModel(model) {
+function isAgenticModel(model) {
   return typeof model === "string" && model.endsWith(KIRO_AGENTIC_SUFFIX);
 }
 
@@ -282,7 +270,7 @@ export function isAgenticModel(model) {
  * @param {string} model
  * @returns {string}
  */
-export function stripAgenticSuffix(model) {
+function stripAgenticSuffix(model) {
   if (!isAgenticModel(model)) return model;
   return model.slice(0, -KIRO_AGENTIC_SUFFIX.length);
 }
@@ -299,7 +287,7 @@ export function stripAgenticSuffix(model) {
  * @param {string} model Model id with `-agentic` already stripped
  * @returns {boolean}
  */
-export function isThinkingModel(model) {
+function isThinkingModel(model) {
   return typeof model === "string" && model.endsWith(KIRO_THINKING_SUFFIX);
 }
 
@@ -309,7 +297,7 @@ export function isThinkingModel(model) {
  * @param {string} model
  * @returns {string}
  */
-export function stripThinkingSuffix(model) {
+function stripThinkingSuffix(model) {
   if (!isThinkingModel(model)) return model;
   return model.slice(0, -KIRO_THINKING_SUFFIX.length);
 }

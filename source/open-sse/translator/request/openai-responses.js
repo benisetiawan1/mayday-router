@@ -6,15 +6,12 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import {
-  normalizeResponsesInput,
-  clampResponsesCallId,
-  coerceResponsesArguments,
-  coerceResponsesOutput,
-} from "../formats/responsesApi.js";
+import { normalizeResponsesInput } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
-const MAX_TOOL_NAME_LEN = 128;
+// Responses API enforces max 64 chars on call_id (#393)
+const MAX_CALL_ID_LEN = 64;
+const clampCallId = (id) => (typeof id === "string" && id.length > MAX_CALL_ID_LEN ? id.substring(0, MAX_CALL_ID_LEN) : id);
 
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
@@ -35,8 +32,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let pendingToolResults = [];
   let pendingReasoning = "";
   let pendingReasoningEncrypted = "";
-  const additionalTools = [];
-  const customToolNames = new Set();
 
   const inputItems = normalizeResponsesInput(body.input);
   if (!inputItems) return body;
@@ -101,7 +96,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       result.messages.push(msg);
     }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL || itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL) {
+    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
       // Start or append to assistant message with tool_calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
@@ -113,20 +108,16 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || typeof item.name !== "string" || item.name.trim() === "") continue;
-      if (itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL) customToolNames.add(item.name);
-      const toolInput = itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL
-        ? { input: typeof item.input === "string" ? item.input : JSON.stringify(item.input ?? "") }
-        : item.arguments;
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: item.name,
-          arguments: typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput ?? {})
+          arguments: item.arguments
         }
       });
     }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) {
+    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -145,9 +136,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         tool_call_id: item.call_id,
         content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
       });
-    }
-    else if (itemType === RESPONSES_ITEM.ADDITIONAL_TOOLS) {
-      if (Array.isArray(item.tools)) additionalTools.push(...item.tools);
     }
     else if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call.
@@ -178,45 +166,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
-  const responseTools = [
-    ...(Array.isArray(body.tools) ? body.tools : []),
-    ...additionalTools,
-  ];
-  if (responseTools.length > 0) {
-    result.tools = responseTools
+  if (body.tools && Array.isArray(body.tools)) {
+    result.tools = body.tools
       .map(tool => {
         // Already in Chat Completions format: { type: "function", function: { name, ... } }
         if (tool.function) return tool;
-        // Responses API function/custom tool: { type, name, description, parameters|format }.
-        // Chat Completions has no freeform custom-tool declaration, so expose custom
-        // tools as functions with one raw `input` string while retaining their names
-        // in translator-only metadata for the response conversion.
-        const name = tool.name;
-        if (!name || typeof name !== "string" || name.trim() === "") return null;
-        if (tool.type === "custom") {
-          customToolNames.add(name);
-          const formatHint = [tool.format?.syntax, tool.format?.definition].filter(Boolean).join("\n");
-          return {
-            type: OPENAI_BLOCK.FUNCTION,
-            function: {
-              name,
-              description: [String(tool.description || ""), formatHint].filter(Boolean).join("\n\n"),
-              parameters: {
-                type: "object",
-                properties: {
-                  input: {
-                    type: "string",
-                    description: "Raw freeform input for this custom tool"
-                  }
-                },
-                required: ["input"],
-                additionalProperties: false
-              }
-            }
-          };
-        }
         // Responses API function tool: { type: "function", name, description, parameters }
         // Only convert when a non-empty name is present; skip hosted tools without one.
+        const name = tool.name;
+        if (!name || typeof name !== "string" || name.trim() === "") return null;
         return {
           type: OPENAI_BLOCK.FUNCTION,
           function: {
@@ -229,7 +187,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       })
       .filter(Boolean);
   }
-  if (customToolNames.size > 0) result._customToolNames = [...customToolNames];
 
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
@@ -250,23 +207,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   delete result.client_metadata;
 
   return result;
-}
-
-/**
- * Extract plain text from a system/developer message for Responses instructions.
- * Array content (text parts) is joined; anything else falls back to "" rather
- * than leaking "[object Object]" upstream.
- */
-function extractInstructionsText(content) {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.map((c) => {
-      if (typeof c?.text === "string") return c.text;
-      if (typeof c?.content === "string") return c.content;
-      return "";
-    }).filter(Boolean).join("\n");
-  }
-  return "";
 }
 
 /**
@@ -338,19 +278,25 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     store: false
   };
 
-  // Extract system message as instructions
+  // Extract system message as instructions and keep inside result.input as role="developer"
+  // OpenAI prompt caching matches on the serialized prefix of the input array (+ tools).
+  // Keeping system/developer prompts in input keeps them in the cacheable prefix (>1024 tokens).
   let hasSystemMessage = false;
   const messages = body.messages || [];
 
   for (const msg of messages) {
     if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
-      // Use the first instruction-bearing message as instructions.
-      // OpenAI recommends role="developer" for GPT-5/Codex as the system-level prompt.
       if (!hasSystemMessage) {
-        result.instructions = extractInstructionsText(msg.content);
+        result.instructions = typeof msg.content === "string" ? msg.content : "";
         hasSystemMessage = true;
       }
-      continue; // Skip instruction messages in input
+      const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content || "");
+      result.input.push({
+        type: "message",
+        role: "developer",
+        content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text }]
+      });
+      continue;
     }
 
     // Convert user/assistant messages to input items
@@ -398,24 +344,26 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     // Convert tool calls
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        // Skip nameless calls — strict Responses upstreams reject them (#444)
-        const name = typeof tc.function?.name === "string" ? tc.function.name.trim() : "";
-        if (!name) continue;
         result.input.push({
           type: RESPONSES_ITEM.FUNCTION_CALL,
-          call_id: clampResponsesCallId(tc.id),
-          name: name.slice(0, MAX_TOOL_NAME_LEN),
-          arguments: coerceResponsesArguments(tc.function?.arguments)
+          call_id: clampCallId(tc.id),
+          name: tc.function?.name || "_unknown",
+          arguments: tc.function?.arguments || "{}"
         });
       }
     }
 
     // Convert tool results - output must be a string for Responses API
     if (msg.role === ROLE.TOOL) {
+      const output = typeof msg.content === "string"
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content.map(c => c.text || JSON.stringify(c)).join("")
+          : JSON.stringify(msg.content);
       result.input.push({
         type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
-        call_id: clampResponsesCallId(msg.tool_call_id),
-        output: coerceResponsesOutput(msg.content)
+        call_id: clampCallId(msg.tool_call_id),
+        output
       });
     }
   }
@@ -429,19 +377,16 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.map(tool => {
       if (tool.type === OPENAI_BLOCK.FUNCTION) {
-        // Strict upstreams reject nameless/overlong tool declarations
-        const name = typeof tool.function?.name === "string" ? tool.function.name.trim() : "";
-        if (!name) return null;
         return {
           type: OPENAI_BLOCK.FUNCTION,
-          name: name.slice(0, MAX_TOOL_NAME_LEN),
+          name: tool.function.name,
           description: String(tool.function.description || ""),
           parameters: normalizeToolParameters(tool.function.parameters),
           strict: tool.function.strict
         };
       }
       return tool;
-    }).filter(Boolean);
+    });
   }
 
   // Pass through other relevant fields

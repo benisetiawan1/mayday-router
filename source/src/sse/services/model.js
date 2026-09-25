@@ -36,6 +36,15 @@ export async function resolveModelAlias(alias) {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
+  // If explicitly prefixed with combo/, route it as combo (provider: null)
+  if (modelStr.startsWith("combo/")) {
+    const comboName = modelStr.slice(6);
+    const combo = await getComboByName(comboName);
+    if (combo) {
+      return { provider: null, model: comboName };
+    }
+  }
+
   const parsed = parseModel(modelStr);
 
   if (!parsed.isAlias) {
@@ -83,10 +92,15 @@ export async function getModelInfo(modelStr) {
  * @returns {Promise<string[]|null>} Array of models or null if not a combo
  */
 export async function getComboModels(modelStr) {
-  // Only check if it's not in provider/model format
-  if (modelStr.includes("/")) return null;
+  let name = modelStr;
+  if (modelStr.startsWith("combo/")) {
+    name = modelStr.slice(6);
+  } else if (modelStr.includes("/")) {
+    // Only check if it's not in provider/model format (unless prefixed with combo/)
+    return null;
+  }
 
-  const combo = await getComboByName(modelStr);
+  const combo = await getComboByName(name);
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }

@@ -2,21 +2,24 @@
 
 import { useState, useEffect, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
-import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, modelAssignmentOptions = null, onModelAssignmentChange = null, strictModelAssignment = false }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
 
   const proxyPoolMap = new Map((proxyPools || []).map((pool) => [pool.id, pool]));
-  const boundProxyPoolId = connection.providerSpecificData?.proxyPoolId || null;
+  const selectedProxyIds = connection.providerSpecificData?.proxyPoolIds || (connection.providerSpecificData?.proxyPoolId ? [connection.providerSpecificData.proxyPoolId] : []);
+  const rotationStrategy = connection.providerSpecificData?.proxyRotationStrategy || "none";
+  const boundProxyPoolId = selectedProxyIds[0] || connection.providerSpecificData?.proxyPoolId || null;
   const boundProxyPool = boundProxyPoolId ? proxyPoolMap.get(boundProxyPoolId) : null;
   const hasLegacyProxy = connection.providerSpecificData?.connectionProxyEnabled === true && !!connection.providerSpecificData?.connectionProxyUrl;
   const hasAnyProxy = !!boundProxyPoolId || hasLegacyProxy;
-  const proxyDisplayText = boundProxyPool
+  const proxyDisplayText = selectedProxyIds.length > 1
+    ? `${selectedProxyIds.length} pools (${rotationStrategy})`
+    : boundProxyPool
     ? `Pool: ${boundProxyPool.name}`
     : boundProxyPoolId
       ? `Pool: ${boundProxyPoolId} (inactive/missing)`
@@ -62,10 +65,26 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
   const handleSelectProxy = async (poolId) => {
     setUpdatingProxy(true);
     try {
-      await onUpdateProxy(poolId === "__none__" ? null : poolId);
+      if (poolId === "__none__") {
+        await onUpdateProxy(null);
+      } else {
+        await onUpdateProxy(poolId);
+      }
+      setShowProxyDropdown(false);
     } finally {
       setUpdatingProxy(false);
+    }
+  };
+
+  const handleAdvancedProxy = async (strategy, ids) => {
+    const activeIds = ids.filter((id) => proxyPoolMap.get(id)?.isActive === true);
+    if (!activeIds.length) return;
+    setUpdatingProxy(true);
+    try {
+      await onUpdateProxy({ proxyPoolIds: activeIds, proxyRotationStrategy: strategy });
       setShowProxyDropdown(false);
+    } finally {
+      setUpdatingProxy(false);
     }
   };
 
@@ -101,6 +120,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     .sort();
 
   useEffect(() => {
+    let interval = null;
     const checkCooldown = () => {
       const until = Object.entries(connection)
         .filter(([k]) => k.startsWith("modelLock_"))
@@ -111,11 +131,13 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     };
 
     checkCooldown();
-    const interval = modelLockUntil ? setInterval(checkCooldown, 1000) : null;
+    if (modelLockUntil) {
+      interval = setInterval(checkCooldown, 1000);
+    }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [modelLockUntil]);
+  }, [modelLockUntil, connection]);
 
   // Determine effective status (override unavailable if cooldown expired)
   const effectiveStatus = (connection.testStatus === "unavailable" && !isCooldown)
@@ -219,6 +241,22 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               )}
             </div>
           )}
+          {modelAssignmentOptions && onModelAssignmentChange && (
+            <select
+              value={Object.prototype.hasOwnProperty.call(connection.providerSpecificData || {}, "assignedModel")
+                ? (connection.providerSpecificData.assignedModel || "")
+                : (connection.providerSpecificData?.freebuffModel || "")}
+              onChange={(event) => onModelAssignmentChange(event.target.value)}
+              disabled={!strictModelAssignment}
+              className="mt-2 max-w-full rounded-md border border-border bg-background px-2 py-1 text-[11px] text-text-main"
+              title="Model assignment"
+            >
+              <option value="">Unassigned</option>
+              {modelAssignmentOptions.map((model) => (
+                <option key={model.id} value={model.id}>{model.name || model.id}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
       <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
@@ -226,8 +264,9 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
           {/* Proxy button with inline dropdown */}
           {(proxyPools || []).length > 0 && (
             <div className="relative" ref={proxyDropdownRef}>
-              <button
-                onClick={() => setShowProxyDropdown((v) => !v)}
+               <button
+                 type="button"
+                 onClick={() => setShowProxyDropdown((v) => !v)}
                 className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
                 disabled={updatingProxy}
               >
@@ -238,16 +277,33 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               </button>
               {showProxyDropdown && (
                 <div className="absolute right-0 top-full z-50 mt-1 max-w-[78vw] min-w-[160px] rounded-lg border border-border bg-bg py-1 shadow-lg">
-                  <button
-                    onClick={() => handleSelectProxy("__none__")}
+                  {rotationStrategy === "smart" && <p className="px-3 py-1 text-[10px] text-text-muted">Smart skips unfit pools for this provider/model.</p>}
+                   <button
+                     type="button"
+                     onClick={() => handleSelectProxy("__none__")}
                     className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}
                   >
                     None
                   </button>
+                  <p className="px-3 pt-2 text-[10px] font-medium uppercase text-text-muted">Rotation</p>
+                  {["fill-first", "round-robin", "random", "smart"].map((strategy) => (
+                     <button
+                       type="button"
+                       key={strategy}
+                       onClick={() => handleAdvancedProxy(strategy, selectedProxyIds.length > 1 ? selectedProxyIds : (proxyPools || []).filter((pool) => pool.isActive).map((pool) => pool.id))}
+                       disabled={updatingProxy}
+                       className={`w-full px-3 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5 ${rotationStrategy === strategy ? "font-medium text-primary" : "text-text-main"}`}
+                    >
+                      {strategy === "smart" ? "Smart (provider/model aware)" : strategy}
+                    </button>
+                  ))}
+                  <p className="px-3 pt-2 text-[10px] font-medium uppercase text-text-muted">Single pool</p>
                   {(proxyPools || []).map((pool) => (
-                    <button
-                      key={pool.id}
-                      onClick={() => handleSelectProxy(pool.id)}
+                     <button
+                       type="button"
+                       key={pool.id}
+                       onClick={() => handleSelectProxy(pool.id)}
+                       disabled={updatingProxy || pool.isActive !== true}
                       className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}
                     >
                       {pool.name}
@@ -287,43 +343,3 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     </div>
   );
 }
-
-ConnectionRow.propTypes = {
-  connection: PropTypes.shape({
-    id: PropTypes.string,
-    name: PropTypes.string,
-    email: PropTypes.string,
-    displayName: PropTypes.string,
-    modelLockUntil: PropTypes.string,
-    testStatus: PropTypes.string,
-    isActive: PropTypes.bool,
-    lastError: PropTypes.string,
-    priority: PropTypes.number,
-    globalPriority: PropTypes.number,
-  }).isRequired,
-  proxyPools: PropTypes.arrayOf(PropTypes.shape({
-    id: PropTypes.string,
-    name: PropTypes.string,
-    proxyUrl: PropTypes.string,
-    noProxy: PropTypes.string,
-    isActive: PropTypes.bool,
-  })),
-  isOAuth: PropTypes.bool.isRequired,
-  isFirst: PropTypes.bool.isRequired,
-  isLast: PropTypes.bool.isRequired,
-  onMoveUp: PropTypes.func.isRequired,
-  onMoveDown: PropTypes.func.isRequired,
-  onToggleActive: PropTypes.func.isRequired,
-  onUpdateProxy: PropTypes.func,
-  onEdit: PropTypes.func.isRequired,
-  onDelete: PropTypes.func.isRequired,
-  oneByOneStatus: PropTypes.shape({
-    state: PropTypes.string,
-    error: PropTypes.string,
-  }),
-  autoPing: PropTypes.shape({
-    on: PropTypes.bool,
-    onToggle: PropTypes.func,
-    provider: PropTypes.string,
-  }),
-};

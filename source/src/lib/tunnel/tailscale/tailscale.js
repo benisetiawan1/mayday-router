@@ -10,15 +10,22 @@ import { DATA_DIR } from "@/lib/dataDir.js";
 const execAsync = promisify(exec);
 
 const BIN_DIR = path.join(DATA_DIR, "bin");
+const BUNDLED_TAILSCALE_BIN_DIR = "/usr/local/bin";
 const IS_MAC = os.platform() === "darwin";
 const IS_LINUX = os.platform() === "linux";
 const IS_WINDOWS = os.platform() === "win32";
 const TAILSCALE_BIN = path.join(BIN_DIR, IS_WINDOWS ? "tailscale.exe" : "tailscale");
+const TAILSCALED_BIN = path.join(BIN_DIR, IS_WINDOWS ? "tailscaled.exe" : "tailscaled");
+const BUNDLED_TAILSCALE_BIN = path.join(BUNDLED_TAILSCALE_BIN_DIR, IS_WINDOWS ? "tailscale.exe" : "tailscale");
+const BUNDLED_TAILSCALED_BIN = path.join(BUNDLED_TAILSCALE_BIN_DIR, IS_WINDOWS ? "tailscaled.exe" : "tailscaled");
 
 // Custom socket for userspace-networking mode (no root required)
 const TAILSCALE_DIR = path.join(DATA_DIR, "tailscale");
 export const TAILSCALE_SOCKET = path.join(TAILSCALE_DIR, "tailscaled.sock");
-const SOCKET_FLAG = IS_WINDOWS ? [] : ["--socket", TAILSCALE_SOCKET];
+const USE_HOST_SOCKET = process.env.TAILSCALE_USE_HOST_SOCKET === "true";
+const HOST_TAILSCALE_SOCKET = process.env.TAILSCALE_HOST_SOCKET || "/var/run/tailscale/tailscaled.sock";
+export const ACTIVE_TAILSCALE_SOCKET = USE_HOST_SOCKET ? HOST_TAILSCALE_SOCKET : TAILSCALE_SOCKET;
+const SOCKET_FLAG = IS_WINDOWS ? [] : ["--socket", ACTIVE_TAILSCALE_SOCKET];
 
 // System daemon socket (sudo install: apt/snap/systemd) — read-only status detection
 const SYSTEM_TAILSCALE_SOCKET = IS_WINDOWS ? null : "/var/run/tailscale/tailscaled.sock";
@@ -47,6 +54,9 @@ const funnelUrlCache = { value: null, port: null, fetchedAt: 0, refreshing: fals
 
 function fallbackBin() {
   if (fs.existsSync(TAILSCALE_BIN)) return TAILSCALE_BIN;
+  if (fs.existsSync(BUNDLED_TAILSCALE_BIN)) return BUNDLED_TAILSCALE_BIN;
+  if (fs.existsSync(TAILSCALED_BIN)) return TAILSCALED_BIN;
+  if (fs.existsSync(BUNDLED_TAILSCALED_BIN)) return BUNDLED_TAILSCALED_BIN;
   if (IS_WINDOWS && fs.existsSync(WINDOWS_TAILSCALE_BIN)) return WINDOWS_TAILSCALE_BIN;
   if (!IS_WINDOWS) return UNIX_TAILSCALE_CANDIDATES.find((p) => fs.existsSync(p)) || null;
   return null;
@@ -74,6 +84,9 @@ export function getTailscaleBin() {
   // First call: synchronously probe common install paths (no exec, no event-loop block)
   if (binCache.value === undefined) {
     if (fs.existsSync(TAILSCALE_BIN)) binCache.value = TAILSCALE_BIN;
+    else if (fs.existsSync(BUNDLED_TAILSCALE_BIN)) binCache.value = BUNDLED_TAILSCALE_BIN;
+    else if (fs.existsSync(TAILSCALED_BIN)) binCache.value = TAILSCALED_BIN;
+    else if (fs.existsSync(BUNDLED_TAILSCALED_BIN)) binCache.value = BUNDLED_TAILSCALED_BIN;
     else if (IS_WINDOWS && fs.existsSync(WINDOWS_TAILSCALE_BIN)) binCache.value = WINDOWS_TAILSCALE_BIN;
     else if (!IS_WINDOWS) {
       const found = UNIX_TAILSCALE_CANDIDATES.find((p) => fs.existsSync(p));
@@ -136,15 +149,17 @@ function bgRefreshLoggedIn() {
 
 // Probe `status --json` over custom then system socket. Resolves parsed JSON or null. Never blocks event loop.
 async function probeStatusAsync(bin) {
-  for (const socketArgs of [SOCKET_FLAG, SYSTEM_SOCKET_FLAG]) {
-    try {
-      const { stdout } = await execAsync(`"${bin}" ${socketArgs.join(" ")} status --json`, {
-        windowsHide: true, env: { ...process.env, PATH: EXTENDED_PATH }, timeout: PROBE_TIMEOUT_MS,
-      });
-      return JSON.parse(stdout);
-    } catch { /* try next socket */ }
-  }
-  return null;
+  const results = await Promise.all(
+    [SOCKET_FLAG, SYSTEM_SOCKET_FLAG].map(async (socketArgs) => {
+      try {
+        const { stdout } = await execAsync(`"${bin}" ${socketArgs.join(" ")} status --json`, {
+          windowsHide: true, env: { ...process.env, PATH: EXTENDED_PATH }, timeout: PROBE_TIMEOUT_MS,
+        });
+        return JSON.parse(stdout);
+      } catch { return null; }
+    })
+  );
+  return results.find(Boolean) || null;
 }
 
 // Sync getter: never blocks; returns last known state, refreshes in background
@@ -256,7 +271,7 @@ function getActualFunnelUrl() {
 }
 
 /** Get funnel URL from tailscale status (cached, non-blocking) */
-export function getTailscaleFunnelUrl(port) {
+function getTailscaleFunnelUrl(port) {
   if (Date.now() - funnelUrlCache.fetchedAt > PROBE_TTL_MS || funnelUrlCache.port !== port) {
     bgRefreshFunnelUrl(port);
   }
@@ -285,7 +300,7 @@ export async function installTailscale(sudoPassword, hostname, onProgress) {
   return startLogin(hostname);
 }
 
-const EXTENDED_PATH = `/usr/local/bin:/opt/homebrew/bin:/usr/sbin:/usr/bin:/bin:/snap/bin:${process.env.PATH || ""}`;
+const EXTENDED_PATH = `${BUNDLED_TAILSCALE_BIN_DIR}:${BIN_DIR}:/usr/local/bin:/opt/homebrew/bin:/usr/sbin:/usr/bin:/bin:/snap/bin:${process.env.PATH || ""}`;
 
 function hasBrew() {
   try { execSync("which brew", { stdio: "ignore", windowsHide: true, env: { ...process.env, PATH: EXTENDED_PATH } }); return true; } catch { return false; }
@@ -418,7 +433,10 @@ async function installTailscaleLinux(sudoPassword, log) {
 }
 
 async function installTailscaleWindows(log) {
-  const msiUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi";
+  // Pin to known stable version to prevent supply-chain attacks via mutable "latest" URL
+  const TS_VERSION = "1.82.0";
+  // SECURITY: version-pinned download from official Tailscale distribution (pkgs.tailscale.com/stable)
+  const msiUrl = `https://pkgs.tailscale.com/stable/tailscale-setup-${TS_VERSION}-amd64.msi`;
   const msiPath = path.join(os.tmpdir(), "tailscale-setup.msi");
 
   // Download MSI via curl.exe (built-in on Win10+) — no PowerShell window, streams progress
@@ -460,16 +478,19 @@ async function installTailscaleWindows(log) {
 
   // Verify tailscale.exe exists after install
   log("Verifying installation...");
-  const maxWait = 10000;
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
+  const deadline = Date.now() + 10000;
+
+  async function verifyInstall() {
     if (fs.existsSync(WINDOWS_TAILSCALE_BIN)) {
       log("Installation complete.");
       return;
     }
+    if (Date.now() >= deadline) throw new Error("Installation finished but tailscale.exe not found");
     await new Promise((r) => setTimeout(r, 1000));
+    return verifyInstall();
   }
-  throw new Error("Installation finished but tailscale.exe not found");
+
+  await verifyInstall();
 }
 
 // Self-heal: if state dir/files were previously created by root (e.g. legacy sudo daemon),
@@ -513,7 +534,7 @@ async function ensureUserOwnedDir(dir) {
 /** Check if running daemon uses TUN mode (Funnel TLS requires TUN). */
 function isDaemonTunMode() {
   try {
-    const ps = execSync(`pgrep -af "tailscaled.*${TAILSCALE_SOCKET}"`, { encoding: "utf8", timeout: 2000 }).trim();
+    const ps = execSync(`pgrep -af "tailscaled.*${ACTIVE_TAILSCALE_SOCKET}"`, { encoding: "utf8", timeout: 2000 }).trim();
     if (!ps) return null;
     return !ps.includes("--tun=userspace-networking");
   } catch { return null; }
@@ -540,18 +561,29 @@ export async function startDaemonWithPassword(sudoPassword) {
     catch { /* may need admin, or already running */ }
     if (!bin) return;
     // Poll up to ~10s for backend to leave NoState
-    for (let i = 0; i < 20; i++) {
+    async function pollBackend(attempt) {
+      if (attempt >= 20) {
+        console.log("[Tailscale] win: BackendState still NoState after poll");
+        return;
+      }
       try {
         const out = execSync(`"${bin}" status --json`, { encoding: "utf8", windowsHide: true, timeout: 2000 });
         const j = JSON.parse(out);
         if (j.BackendState && j.BackendState !== "NoState") {
-          console.log(`[Tailscale] win: BackendState=${j.BackendState} after ${i*500}ms`);
+          console.log(`[Tailscale] win: BackendState=${j.BackendState} after ${attempt*500}ms`);
           return;
         }
       } catch { /* daemon not ready */ }
       await new Promise((r) => setTimeout(r, 500));
+      return pollBackend(attempt + 1);
     }
-    console.log("[Tailscale] win: BackendState still NoState after poll");
+
+    await pollBackend(0);
+    return;
+  }
+
+  if (USE_HOST_SOCKET) {
+    console.log("[Tailscale] TAILSCALE_USE_HOST_SOCKET enabled — skipping local daemon spawn");
     return;
   }
 
@@ -572,20 +604,24 @@ export async function startDaemonWithPassword(sudoPassword) {
   }
 
   // Mode mismatch or unresponsive → kill all daemons on our socket
-  try { execSync(`pkill -9 -f "tailscaled.*${TAILSCALE_SOCKET}"`, { stdio: "ignore", timeout: 3000 }); } catch { /* ignore */ }
+  try { execSync(`pkill -9 -f "tailscaled.*${ACTIVE_TAILSCALE_SOCKET}"`, { stdio: "ignore", timeout: 3000 }); } catch { /* ignore */ }
   if (sudoPassword) {
-    try { await execWithPassword(`pkill -9 -f "tailscaled.*${TAILSCALE_SOCKET}"`, sudoPassword); } catch { /* ignore */ }
+    try { await execWithPassword(`pkill -9 -f "tailscaled.*${ACTIVE_TAILSCALE_SOCKET}"`, sudoPassword); } catch { /* ignore */ }
   } else {
-    try { execSync(`sudo -n pkill -9 -f "tailscaled.*${TAILSCALE_SOCKET}"`, { stdio: "ignore", timeout: 3000 }); } catch { /* ignore */ }
+    try { execSync(`sudo -n pkill -9 -f "tailscaled.*${ACTIVE_TAILSCALE_SOCKET}"`, { stdio: "ignore", timeout: 3000 }); } catch { /* ignore */ }
   }
   await new Promise((r) => setTimeout(r, 1500));
 
   // Reclaim folder ownership (previous root daemon may have locked it)
   await ensureUserOwnedDir(TAILSCALE_DIR);
 
-  const tailscaledBin = IS_MAC ? "/usr/local/bin/tailscaled" : "tailscaled";
+  const tailscaledBin = fs.existsSync(TAILSCALED_BIN)
+    ? TAILSCALED_BIN
+    : fs.existsSync(BUNDLED_TAILSCALED_BIN)
+      ? BUNDLED_TAILSCALED_BIN
+      : (IS_MAC ? "/usr/local/bin/tailscaled" : "tailscaled");
   const daemonArgs = [
-    `--socket=${TAILSCALE_SOCKET}`,
+    `--socket=${ACTIVE_TAILSCALE_SOCKET}`,
     `--statedir=${TAILSCALE_DIR}`,
   ];
   if (!wantTun) daemonArgs.push("--tun=userspace-networking");
@@ -842,7 +878,7 @@ export function stopFunnel() {
 }
 
 /** Kill tailscaled daemon (runs as root, needs sudo) */
-export async function stopDaemon(sudoPassword) {
+async function stopDaemon(sudoPassword) {
   // Try non-sudo first
   try { execSync("pkill -x tailscaled", { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch { /* ignore */ }
 

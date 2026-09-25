@@ -7,16 +7,13 @@ import {
   refreshClineToken,
   refreshClaudeOAuthToken,
   refreshGoogleToken,
+  refreshQwenToken,
   refreshCodexToken,
   refreshKiroToken,
   refreshIflowToken,
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
-  refreshCodebuddyIntlToken,
-  refreshTraeToken,
-  refreshZedToken,
-  refreshWindsurfToken,
   classifyOAuthRefreshError,
 } from "./tokenRefresh/providers.js";
 
@@ -27,16 +24,13 @@ export {
   refreshClineToken,
   refreshClaudeOAuthToken,
   refreshGoogleToken,
+  refreshQwenToken,
   refreshCodexToken,
   refreshKiroToken,
   refreshIflowToken,
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
-  refreshCodebuddyIntlToken,
-  refreshTraeToken,
-  refreshZedToken,
-  refreshWindsurfToken,
   classifyOAuthRefreshError,
 };
 
@@ -75,15 +69,8 @@ export function parseVertexSaJson(apiKey) {
 
 // Cache Vertex tokens keyed by service account email { token, expiresAt }
 const vertexTokenCache = new Map();
-// In-flight mints per service account — prevent concurrent double-mint
-const vertexRefreshInFlight = new Map();
 
 export async function refreshVertexToken(saJson, log) {
-  // Share a single in-flight mint across concurrent callers for this SA
-  const inflight = vertexRefreshInFlight.get(cacheKey);
-  if (inflight) return inflight;
-
-  const mintPromise = (async () => {
   const cacheKey = saJson.client_email;
   const cached = vertexTokenCache.get(cacheKey);
 
@@ -131,12 +118,6 @@ export async function refreshVertexToken(saJson, log) {
     log?.error?.("TOKEN_REFRESH", `Vertex token error: ${error.message}`);
     return null;
   }
-  }).finally(() => {
-    vertexRefreshInFlight.delete(cacheKey);
-  });
-
-  vertexRefreshInFlight.set(cacheKey, mintPromise);
-  return mintPromise;
 }
 
 function vertexRefreshHandler(c, log) {
@@ -150,6 +131,7 @@ const REFRESH_HANDLERS = {
   antigravity: (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log),
   claude: (c, log) => refreshClaudeOAuthToken(c.refreshToken, log),
   codex: (c, log) => refreshCodexToken(c.refreshToken, log),
+  qwen: (c, log) => refreshQwenToken(c.refreshToken, log),
   iflow: (c, log) => refreshIflowToken(c.refreshToken, log),
   github: (c, log) => refreshGitHubToken(c.refreshToken, log),
   kiro: (c, log) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log),
@@ -157,12 +139,10 @@ const REFRESH_HANDLERS = {
   // Grok CLI shares xAI OAuth client + token endpoint (device-code tokens refresh the same way)
   "grok-cli": (c, log) => refreshXaiToken(c.refreshToken, log),
   gcli: (c, log) => refreshXaiToken(c.refreshToken, log),
-  "codebuddy-cn": (c, log) => refreshCodebuddyToken(c.refreshToken, log),
-  "codebuddy-intl": (c, log) => refreshCodebuddyIntlToken(c.refreshToken, log),
-  trae: (c, log) => refreshTraeToken(c.refreshToken, c, log),
+  "codebuddy-cn": (c, log) => refreshCodebuddyToken(c.refreshToken, log, "codebuddy-cn"),
+  "codebuddy-intl": (c, log) => refreshCodebuddyToken(c.refreshToken, log, "codebuddy-intl"),
+  gitlab: (c, log) => refreshAccessToken("gitlab", c.refreshToken, c, log),
   cline: (c, log) => refreshClineToken(c.refreshToken, log),
-  zed: () => refreshZedToken(),
-  windsurf: (c, log) => refreshWindsurfToken(c, log),
   // Kimi Code OAuth (merged into id `kimi`); legacy id still routes here
   kimi: (c, log) => refreshKimiToken(c.refreshToken, c, log),
   "kimi-coding": (c, log) => refreshKimiToken(c.refreshToken, c, log),
@@ -218,6 +198,7 @@ export function formatProviderCredentials(provider, credentials, log) {
       };
 
     case "codex":
+    case "qwen":
     case "iflow":
     case "openai":
     case "openrouter":
@@ -249,16 +230,13 @@ export async function getAllAccessTokens(userInfo, log) {
   const results = {};
 
   if (userInfo.connections && Array.isArray(userInfo.connections)) {
-    for (const connection of userInfo.connections) {
-      if (connection.isActive && connection.provider) {
-        const token = await getAccessToken(connection.provider, {
-          refreshToken: connection.refreshToken
-        }, log);
-
-        if (token) {
-          results[connection.provider] = token;
-        }
-      }
+    const activeConns = userInfo.connections.filter(c => c.isActive && c.provider);
+    const tokens = await Promise.all(activeConns.map(connection =>
+      getAccessToken(connection.provider, { refreshToken: connection.refreshToken }, log)
+        .then(token => ({ provider: connection.provider, token }))
+    ));
+    for (const { provider, token } of tokens) {
+      if (token) results[provider] = token;
     }
   }
 
@@ -266,10 +244,10 @@ export async function getAllAccessTokens(userInfo, log) {
 }
 
 export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    if (attempt > 0) {
-      const delay = attempt * 1000;
-      log?.debug?.("TOKEN_REFRESH", `Retry ${attempt}/${maxRetries} after ${delay}ms`);
+  async function attempt(n) {
+    if (n > 0) {
+      const delay = n * 1000;
+      log?.debug?.("TOKEN_REFRESH", `Retry ${n}/${maxRetries} after ${delay}ms`);
       await new Promise(r => setTimeout(r, delay));
     }
 
@@ -277,10 +255,15 @@ export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
       const result = await refreshFn();
       if (result) return result;
     } catch (error) {
-      log?.warn?.("TOKEN_REFRESH", `Attempt ${attempt + 1}/${maxRetries} failed: ${error.message}`);
+      log?.warn?.("TOKEN_REFRESH", `Attempt ${n + 1}/${maxRetries} failed: ${error.message}`);
     }
+
+    if (n + 1 >= maxRetries) {
+      log?.error?.("TOKEN_REFRESH", `All ${maxRetries} retry attempts failed`);
+      return null;
+    }
+    return attempt(n + 1);
   }
 
-  log?.error?.("TOKEN_REFRESH", `All ${maxRetries} retry attempts failed`);
-  return null;
+  return attempt(0);
 }

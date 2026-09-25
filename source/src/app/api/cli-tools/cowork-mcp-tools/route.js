@@ -1,8 +1,6 @@
 "use server";
 
 import { NextResponse } from "next/server";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
-import { isLocalRequest } from "@/dashboardGuard";
 
 const TIMEOUT_MS = 8000;
 
@@ -21,9 +19,10 @@ async function probeMcp(url) {
     const initRes = await fetch(url, {
       method: "POST",
       headers,
+      redirect: "manual",
       body: JSON.stringify({
         jsonrpc: "2.0", id: 1, method: "initialize",
-        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "9router", version: "1" } },
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "mayday", version: "1" } },
       }),
       signal: ac.signal,
     });
@@ -43,6 +42,7 @@ async function probeMcp(url) {
     await fetch(url, {
       method: "POST",
       headers: listHeaders,
+      redirect: "manual",
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }),
       signal: ac.signal,
     }).catch(() => {});
@@ -51,6 +51,7 @@ async function probeMcp(url) {
     const listRes = await fetch(url, {
       method: "POST",
       headers: listHeaders,
+      redirect: "manual",
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
       signal: ac.signal,
     });
@@ -88,14 +89,6 @@ export async function POST(request) {
     const { url } = await request.json();
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "url required" }, { status: 400 });
-    }
-    // SSRF guard for remote callers; local host keeps self-hosted MCP servers.
-    if (!isLocalRequest(request)) {
-      try {
-        assertPublicUrl(url);
-      } catch {
-        return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
-      }
     }
     const result = await probeMcp(url);
     return NextResponse.json(result);

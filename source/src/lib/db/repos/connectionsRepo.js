@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
@@ -108,7 +108,13 @@ export async function createProviderConnection(data) {
     const all = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
 
     let existing = null;
-    if (data.authType === "oauth" && data.email) {
+    // Dedup precedence: cursor oauth rows key on machineId (stable even when
+    // profile-email extraction fails); other oauth rows key on email;
+    // apikey rows key on name.
+    // access_token: never dedup — user manages duplicates manually
+    if (data.provider === "cursor" && data.authType === "oauth" && data.providerSpecificData?.machineId) {
+      existing = all.find(c => c.provider === "cursor" && c.providerSpecificData?.machineId === data.providerSpecificData.machineId);
+    } else if (data.authType === "oauth" && data.email) {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find(c => {
@@ -144,7 +150,6 @@ export async function createProviderConnection(data) {
     } else if (data.authType === "apikey" && data.name) {
       existing = all.find(c => c.authType === "apikey" && c.name === data.name);
     }
-    // access_token: never dedup — user manages duplicates manually
 
     if (existing) {
       const merged = { ...existing, ...data, updatedAt: now };
@@ -163,7 +168,7 @@ export async function createProviderConnection(data) {
     }
 
     const conn = {
-      id: uuidv4(),
+      id: randomUUID(),
       provider: data.provider,
       authType: data.authType || "oauth",
       name: connectionName,
@@ -186,6 +191,46 @@ export async function createProviderConnection(data) {
   });
 
   return result;
+}
+
+export async function createProviderConnectionsBulk(items) {
+  if (!Array.isArray(items) || items.length === 0 || items.length > 500) {
+    throw new Error("Bulk connection batch must contain 1-500 items");
+  }
+  const db = await getAdapter();
+  const results = [];
+  db.transaction(() => {
+    for (const data of items) {
+      if (!data?.provider || !data?.apiKey || !data?.name) {
+        results.push({ name: data?.name || null, ok: false, error: "provider, apiKey, and name are required" });
+        continue;
+      }
+      const existing = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider])
+        .map(rowToConn)
+        .find((connection) => connection.authType === "apikey" && connection.name === data.name);
+      const now = new Date().toISOString();
+      const connection = existing
+        ? {
+            ...existing,
+            ...data,
+            providerSpecificData: data.providerSpecificData === undefined
+              ? existing.providerSpecificData
+              : data.providerSpecificData,
+            authType: "apikey",
+            updatedAt: now,
+          }
+        : {
+            id: randomUUID(), provider: data.provider, authType: "apikey", name: data.name,
+            priority: data.priority || 1, isActive: true, createdAt: now, updatedAt: now,
+            apiKey: data.apiKey, testStatus: data.testStatus || "unknown",
+            providerSpecificData: data.providerSpecificData,
+          };
+      upsert(db, connection);
+      results.push({ name: data.name, ok: true, id: connection.id, updated: !!existing });
+    }
+    for (const provider of new Set(items.map((item) => item.provider))) reorderInTx(db, provider);
+  });
+  return results;
 }
 
 // Critical: OAuth refresh token race — atomic merge inside transaction

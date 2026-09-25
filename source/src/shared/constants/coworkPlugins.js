@@ -1,5 +1,5 @@
 // Default remote plugins for Claude Cowork (3p managedMcpServers, HTTPS only).
-const DEFAULT_PLUGINS = [
+export const DEFAULT_PLUGINS = [
   {
     name: "exa",
     title: "Exa",
@@ -21,7 +21,7 @@ const DEFAULT_PLUGINS = [
 ];
 
 // Local stdio plugins bridged via inline SSE endpoint on the app's port.
-const LOCAL_STDIO_PLUGINS = [
+export const LOCAL_STDIO_PLUGINS = [
   {
     name: "browsermcp",
     title: "Browser MCP",
@@ -33,7 +33,7 @@ const LOCAL_STDIO_PLUGINS = [
   },
 ];
 
-function buildManagedMcpServers(plugins) {
+export function buildManagedMcpServers(plugins) {
   const list = Array.isArray(plugins) ? plugins : [];
   const out = [];
   const seen = new Set();
@@ -69,4 +69,8 @@ function buildManagedMcpServers(plugins) {
   return out;
 }
 
-module.exports = { DEFAULT_PLUGINS, LOCAL_STDIO_PLUGINS, buildManagedMcpServers };
+// Allowlist of executables that may be spawned for custom stdio MCP plugins.
+export const ALLOWED_MCP_COMMANDS = new Set(["npx", "node", "uvx", "python", "python3", "bunx", "bun"]);
+
+// Compatibility for CJS-style require() consumers (e.g. stdioSseBridge).
+export default { DEFAULT_PLUGINS, LOCAL_STDIO_PLUGINS, ALLOWED_MCP_COMMANDS, buildManagedMcpServers };

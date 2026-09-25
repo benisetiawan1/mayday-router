@@ -10,6 +10,13 @@ export const BACKGROUND_REFRESH_LEAD_MS = 30 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;
 const SENSITIVE_PROVIDERS = new Set(["antigravity", "gemini-cli"]);
+const MAX_REFRESH_RETRIES = 3; // Max retries before marking connection as expired
+const INVALID_TOKEN_ERRORS = new Set([
+  "refresh_token_reused",
+  "invalid_grant",
+  "token_expired",
+  "invalid_request"
+]);
 
 let started = false;
 let intervalHandle = null;
@@ -105,20 +112,71 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
 
     for (let i = 0; i < due.length; i++) {
       const conn = due[i];
+      
+      // Skip connections with invalid refresh tokens (prevent infinite retry loops)
+      const retryCount = conn.providerSpecificData?.refreshRetryCount || 0;
+      const lastError = conn.providerSpecificData?.lastRefreshError || "";
+      const isInvalidToken = INVALID_TOKEN_ERRORS.some(e => lastError.toLowerCase().includes(e));
+      
+      if (isInvalidToken && retryCount >= MAX_REFRESH_RETRIES) {
+        log.warn("BG_TOKEN_REFRESH", "Skipping connection with invalid refresh token (max retries reached)", {
+          id: conn.id,
+          email: conn.email || conn.name || conn.id,
+          provider: conn.provider,
+          retryCount,
+        });
+        continue;
+      }
+      
       try {
         await refresh(conn);
+        // Reset retry count on success
+        if (retryCount > 0) {
+          const { updateProviderConnection } = await import("../../lib/localDb.js");
+          await updateProviderConnection(conn.id, {
+            providerSpecificData: {
+              ...conn.providerSpecificData,
+              refreshRetryCount: 0,
+              lastRefreshError: null,
+            }
+          });
+        }
         log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
           id: conn.id,
           email: conn.email || conn.name || conn.id,
           provider: conn.provider,
         });
       } catch (err) {
-        log.warn("BG_TOKEN_REFRESH", "Connection refresh failed (swallowed)", {
-          id: conn?.id,
-          email: conn?.email || conn?.name || conn?.id,
-          provider: conn?.provider,
-          error: err?.message ?? String(err),
-        });
+        const errMsg = err?.message ?? String(err);
+        const isInvalid = INVALID_TOKEN_ERRORS.some(e => errMsg.toLowerCase().includes(e));
+        
+        // Increment retry count for invalid token errors
+        if (isInvalid) {
+          const { updateProviderConnection } = await import("../../lib/localDb.js");
+          await updateProviderConnection(conn.id, {
+            providerSpecificData: {
+              ...conn.providerSpecificData,
+              refreshRetryCount: retryCount + 1,
+              lastRefreshError: errMsg.slice(0, 200),
+              lastRefreshErrorAt: new Date().toISOString(),
+            }
+          });
+          log.error("BG_TOKEN_REFRESH", "Invalid refresh token - incrementing retry count", {
+            id: conn.id,
+            email: conn.email || conn.name || conn.id,
+            provider: conn.provider,
+            retryCount: retryCount + 1,
+            maxRetries: MAX_REFRESH_RETRIES,
+            error: errMsg,
+          });
+        } else {
+          log.warn("BG_TOKEN_REFRESH", "Connection refresh failed (swallowed)", {
+            id: conn?.id,
+            email: conn?.email || conn?.name || conn?.id,
+            provider: conn?.provider,
+            error: errMsg,
+          });
+        }
       }
 
       // Sequential delay between accounts to prevent bursting upstream providers (especially Google Cloud)

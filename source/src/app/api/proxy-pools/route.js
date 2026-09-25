@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
+import { requireDashboardAuth } from "@/lib/auth/routeAuth.js";
+
+async function authorized(request) {
+  return requireDashboardAuth(request);
+}
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -32,10 +37,14 @@ function buildUsageMap(connections = []) {
   const usageMap = new Map();
 
   for (const connection of connections) {
-    const proxyPoolId = connection?.providerSpecificData?.proxyPoolId;
-    if (!proxyPoolId) continue;
-
-    usageMap.set(proxyPoolId, (usageMap.get(proxyPoolId) || 0) + 1);
+    const data = connection?.providerSpecificData;
+    const proxyPoolIds = [
+      data?.proxyPoolId,
+      ...(Array.isArray(data?.proxyPoolIds) ? data.proxyPoolIds : []),
+    ].filter(Boolean);
+    for (const proxyPoolId of new Set(proxyPoolIds)) {
+      usageMap.set(proxyPoolId, (usageMap.get(proxyPoolId) || 0) + 1);
+    }
   }
 
   return usageMap;
@@ -43,6 +52,7 @@ function buildUsageMap(connections = []) {
 
 // GET /api/proxy-pools - List proxy pools
 export async function GET(request) {
+  if (!await authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { searchParams } = new URL(request.url);
     const isActive = toBoolean(searchParams.get("isActive"));
@@ -76,6 +86,7 @@ export async function GET(request) {
 
 // POST /api/proxy-pools - Create proxy pool
 export async function POST(request) {
+  if (!await authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await request.json();
     const normalized = normalizeProxyPoolInput(body);

@@ -1,6 +1,5 @@
 "use client";
 
-import PropTypes from "prop-types";
 import Card from "@/shared/components/Card";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
@@ -20,6 +19,9 @@ export default function OverviewCards({ stats }) {
       <Card className="flex min-w-0 flex-col gap-1 px-4 py-3">
         <span className="text-text-muted text-sm uppercase font-semibold">Cached Tokens</span>
         <span className="truncate text-2xl font-bold text-info">{fmt(stats.totalCachedTokens)}</span>
+        <span className="text-[10px] text-text-muted">
+          {stats.totalPromptTokens > 0 ? `${((stats.totalCachedTokens / stats.totalPromptTokens) * 100).toFixed(1)}% hit rate` : "0.0% hit rate"}
+        </span>
       </Card>
       <Card className="flex min-w-0 flex-col gap-1 px-4 py-3">
         <span className="text-text-muted text-sm uppercase font-semibold">Output Tokens</span>
@@ -34,6 +36,4 @@ export default function OverviewCards({ stats }) {
   );
 }
 
-OverviewCards.propTypes = {
-  stats: PropTypes.object.isRequired,
-};
+

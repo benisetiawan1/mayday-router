@@ -6,7 +6,6 @@ import { toOpenAIUsage } from "../concerns/usage.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
-import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
 
 // Build chunk meta for current gemini state
 function chunkMeta(state) {
@@ -14,18 +13,14 @@ function chunkMeta(state) {
 }
 
 // Build a tool_call chunk from a gemini functionCall part (shared by sig/non-sig branches)
-function emitFunctionCall(functionCall, state, signature = null) {
+function emitFunctionCall(functionCall, state) {
   const rawName = functionCall.name;
   // Restore original tool name from mapping (AG cloaking)
   const fcName = state.toolNameMap?.get(rawName) || rawName;
   const fcArgs = functionCall.args || {};
   const toolCallIndex = state.functionIndex++;
-  const callId = functionCall.id || `${fcName}-${Date.now()}-${toolCallIndex}`;
-  if (signature) {
-    storeGeminiThoughtSignature(callId, signature, state.sessionId);
-  }
   const toolCall = {
-    id: callId,
+    id: `${fcName}-${Date.now()}-${toolCallIndex}`,
     index: toolCallIndex,
     type: OPENAI_BLOCK.FUNCTION,
     function: { name: fcName, arguments: JSON.stringify(fcArgs) },
@@ -62,32 +57,24 @@ export function geminiToOpenAIResponse(chunk, state) {
   if (content?.parts) {
     for (const part of content.parts) {
       const hasThoughtSig = part.thoughtSignature || part.thought_signature;
-      if (hasThoughtSig && typeof hasThoughtSig === "string") {
-        state.pendingThoughtSignature = hasThoughtSig;
-      }
       const isThought = part.thought === true;
-
+      
       // Handle thought signature (thinking mode)
       if (hasThoughtSig) {
         const hasTextContent = part.text !== undefined && part.text !== "";
         const hasFunctionCall = !!part.functionCall;
-
-        // Standalone thoughtSignature part (no text, no functionCall): keep pending for next functionCall
-        if (!hasTextContent && !hasFunctionCall) {
-          continue;
-        }
-
+        
         if (hasTextContent) {
           results.push(buildChunk(
             chunkMeta(state),
             isThought ? reasoningDelta(part.text) : { content: part.text },
             null
           ));
+          if (!isThought) state.hasEmittedContent = true;
         }
-
+        
         if (hasFunctionCall) {
-          results.push(emitFunctionCall(part.functionCall, state, hasThoughtSig));
-          state.pendingThoughtSignature = null;
+          results.push(emitFunctionCall(part.functionCall, state));
         }
         continue;
       }
@@ -102,18 +89,18 @@ export function geminiToOpenAIResponse(chunk, state) {
           isThought ? reasoningDelta(part.text) : { content: part.text },
           null
         ));
+        if (!isThought) state.hasEmittedContent = true;
       }
 
       // Function call
       if (part.functionCall) {
-        const sig = state.pendingThoughtSignature || null;
-        results.push(emitFunctionCall(part.functionCall, state, sig));
-        state.pendingThoughtSignature = null;
+        results.push(emitFunctionCall(part.functionCall, state));
       }
 
       // Inline data (images)
       const inlineData = part.inlineData || part.inline_data;
       if (inlineData?.data) {
+        state.hasEmittedContent = true;
         const mimeType = inlineData.mimeType || inlineData.mime_type || DEFAULT_IMAGE_MIME;
         results.push(buildChunk(
           chunkMeta(state),
@@ -134,11 +121,41 @@ export function geminiToOpenAIResponse(chunk, state) {
   const geminiUsage = toOpenAIUsage(usageMeta, "gemini");
   if (geminiUsage) state.usage = geminiUsage;
 
+  // If upstream hid the thought parts but reasoning actually happened
+  // (reasoning_tokens > 0), emit a synthetic reasoning chunk so the UI
+  // signals thinking activity even when the text isn't visible.
+  // Google Cloud Code for Antigravity currently streams final usage but
+  // strips thought parts from the SSE — we surface that gap here.
+  if (
+    candidate.finishReason &&
+    state.usage?.completion_tokens_details?.reasoning_tokens > 0 &&
+    !state._reasoningSurfaced
+  ) {
+    const hiddenTokens = state.usage.completion_tokens_details.reasoning_tokens;
+    results.push(
+      buildChunk(
+        chunkMeta(state),
+        reasoningDelta(`[thinking: ${hiddenTokens} tokens hidden by upstream]`),
+        null,
+      ),
+    );
+    state._reasoningSurfaced = true;
+  }
+
   // Finish reason - include usage in final chunk
   if (candidate.finishReason) {
     let finishReason = toOpenAIFinish(candidate.finishReason, "gemini");
     if (finishReason === OPENAI_FINISH.STOP && state.geminiToolCallCount > 0) {
       finishReason = OPENAI_FINISH.TOOL_CALLS;
+    }
+
+    // If stream is closing without any text content or tool calls emitted,
+    // (even if reasoning/thinking was emitted), emit a synthetic whitespace/text chunk.
+    // Modern AI SDKs (e.g. Vercel AI SDK in Kilo) reject responses with APIEmptyResponseError
+    // when a stream finishes with ONLY thinking tokens and zero text/tool content.
+    if (!state.hasEmittedContent && state.geminiToolCallCount === 0) {
+      results.push(buildChunk(chunkMeta(state), { content: "\n" }, null));
+      state.hasEmittedContent = true;
     }
     
     const finalChunk = buildChunk(chunkMeta(state), {}, finishReason);

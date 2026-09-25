@@ -4,6 +4,8 @@
 import { platform, arch } from "os";
 import { ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT } from "open-sse/providers/shared.js";
 import { PROVIDER_OAUTH, PROVIDERS as REGISTRY_PROVIDERS } from "open-sse/providers/index.js";
+import { AWS_REGION_PATTERN, assertValidAwsRegion } from "open-sse/config/awsRegion.js";
+export { AWS_REGION_PATTERN, assertValidAwsRegion } from "open-sse/config/awsRegion.js";
 
 /**
  * Get the platform enum value based on the current OS.
@@ -27,6 +29,9 @@ export const CODEX_CONFIG = { ...PROVIDER_OAUTH["codex"] };
 // Gemini (Google) OAuth Configuration (Standard OAuth2)
 // clientId/clientSecret from GOOGLE_OAUTH_CLIENT (shared.js) — not stored in registry
 export const GEMINI_CONFIG = { ...GOOGLE_OAUTH_CLIENT, ...PROVIDER_OAUTH["gemini-cli"] };
+
+// Qwen OAuth Configuration (Device Code Flow with PKCE)
+export const QWEN_CONFIG = { ...PROVIDER_OAUTH["qwen"] };
 
 // Qoder OAuth Configuration (Device Token Flow with PKCE).
 // Device tokens are long-lived (~30 days for access, ~360 for refresh).
@@ -63,17 +68,6 @@ export const GITHUB_CONFIG = { ...PROVIDER_OAUTH["github"] };
 
 // Kiro OAuth Configuration (multi-method: AWS Builder ID / IDC / Social / Import Token)
 export const KIRO_CONFIG = { ...PROVIDER_OAUTH["kiro"] };
-
-// AWS region allowlist pattern — prevents SSRF via region injection into upstream URLs (GHSA-6mwv-4mrm-5p3m)
-export const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
-
-// Reject any region that is not a valid AWS region before interpolating it into a URL
-export function assertValidAwsRegion(region) {
-  if (typeof region !== "string" || !AWS_REGION_PATTERN.test(region)) {
-    throw new Error("Invalid region");
-  }
-  return region;
-}
 
 // Cursor OAuth Configuration (Import Token from Cursor IDE)
 // tokenStoragePaths: user-reference only, not stored in registry
@@ -113,9 +107,10 @@ export const GITLAB_CONFIG = { ...PROVIDER_OAUTH["gitlab"] };
 
 // CodeBuddy (Tencent) OAuth Configuration (Browser OAuth Polling Flow)
 export const CODEBUDDY_CONFIG = { ...PROVIDER_OAUTH["codebuddy-cn"] };
-
-// CodeBuddy International — same shape as CN, .ai domain (mirror of codebuddy-cn).
 export const CODEBUDDY_INTL_CONFIG = { ...PROVIDER_OAUTH["codebuddy-intl"] };
+
+// Z.ai (ZCode) OAuth Configuration (Manual paste flow via zcode:// custom scheme)
+export const ZAI_CONFIG = { ...PROVIDER_OAUTH["zcode"] };
 
 // Kimchi OAuth Configuration (Browser token callback flow)
 export const KIMCHI_CONFIG = { ...PROVIDER_OAUTH["kimchi"] };
@@ -124,76 +119,8 @@ export const KIMCHI_CONFIG = { ...PROVIDER_OAUTH["kimchi"] };
 // Endpoint: cli-chat-proxy.grok.com — same client_id as xai, different flow + scopes
 export const GROK_CLI_CONFIG = { ...PROVIDER_OAUTH["grok-cli"] };
 
-// Trae (ByteDance marscode) OAuth — authorization_code flow with local callback.
-//   1) POST GetLoginGuidance {loginTraceID} → {Result.LoginHost}
-//   2) Browser opens ${loginHost}/authorization?client_id=...&login_trace_id=...&auth_callback_url=${cb}
-//   3) Redirect → ${cb}?refreshToken=...&loginHost=...&isRedirect=true
-//   4) POST ExchangeToken {ClientID, RefreshToken, ClientSecret:"-"} → {Result.AccessToken, ExpiresAt}
-//   5) POST GetUserInfo (x-cloudide-token) → email/name
-export const TRAE_CONFIG = {
-  clientId: "ono9krqynydwx5",
-  clientSecret: "-",
-  loginGuidanceUrls: [
-    "https://api.marscode.com/cloudide/api/v3/trae/GetLoginGuidance",
-    "https://api.trae.ai/cloudide/api/v3/trae/GetLoginGuidance",
-    "https://www.trae.ai/cloudide/api/v3/trae/GetLoginGuidance",
-  ],
-  apiOrigins: [
-    "https://api.marscode.com",
-    "https://api.trae.ai",
-    "https://www.trae.ai",
-    "https://www.marscode.com",
-  ],
-  exchangeTokenPath: "/cloudide/api/v3/trae/oauth/ExchangeToken",
-  getUserInfoPath: "/cloudide/api/v3/trae/GetUserInfo",
-  authorizationPath: "/authorization",
-  callbackPath: "/callback",
-  minAppVersion: "3.5.54",
-  defaultAppVersion: "3.5.54",
-  defaultAppType: "stable",
-  defaultPluginVersion: "local",
-  // service machine id is derived at runtime; device_id "0" is the stable default
-  defaultDeviceId: "0",
-  userAgent: "Trae/1.0.0 antigravity-cockpit-tools",
-  webUrl: "https://www.trae.ai",
-  authScheme: "Cloud-IDE-JWT",
-  tokenLifetimeDays: 14,
-  oauthTimeoutMs: 600_000,
-};
-
-// Windsurf / Devin CLI OAuth — authorization_code (implicit) flow with local callback.
-//   1) Browser opens windsurf.com/windsurf/signin?response_type=token&client_id=...&redirect_uri=${cb}
-//   2) Redirect → ${cb}?access_token=${firebaseJWT}&state=...
-//   3) POST RegisterUser {firebase_id_token} → {apiKey, apiServerUrl, name}
-//   4) POST GetOneTimeAuthToken → GetCurrentUser (best-effort email/plan)
-export const WINDSURF_CONFIG = {
-  clientId: "3GUryQ7ldAeKEuD2obYnppsnmj58eP5u",
-  authBaseUrl: "https://www.windsurf.com",
-  signInPath: "/windsurf/signin",
-  registerApiBaseUrl: "https://register.windsurf.com",
-  registerPath: "/exa.seat_management_pb.SeatManagementService/RegisterUser",
-  oneTimeAuthPath: "/exa.seat_management_pb.SeatManagementService/GetOneTimeAuthToken",
-  currentUserPath: "/exa.seat_management_pb.SeatManagementService/GetCurrentUser",
-  planStatusPath: "/exa.seat_management_pb.SeatManagementService/GetPlanStatus",
-  userStatusPath: "/exa.seat_management_pb.SeatManagementService/GetUserStatus",
-  defaultApiServerUrl: "https://server.codeium.com",
-  firebaseApiKey: "AIzaSyDsOl-1XpT5err0Tcn0TFFod1H8gVGIycY",
-  callbackPath: "/windsurf-auth-callback",
-  userAgent: "antigravity-cockpit-tools",
-  oauthTimeoutMs: 600_000,
-};
-
-// Zed hosted LLM aggregator — RSA keypair native-app auth (NOT OAuth).
-// Client generates ephemeral RSA-2048 keypair; user signs in at zed.dev/native_app_signin;
-// Zed redirects to local callback with access_token RSA-encrypted against our public key.
-// See open-sse/shared/zedAuth.js for the keypair/decrypt helpers.
-export const ZED_HOSTED_CONFIG = {
-  webBaseUrl: "https://zed.dev",
-  cloudBaseUrl: "https://cloud.zed.dev",
-  llmBaseUrl: "https://cloud.zed.dev",
-  defaultNativeAppPort: 58443,
-  oauthTimeoutMs: 600_000,
-};
+// Freebuff OAuth Configuration (Device Code Flow)
+export const FREEBUFF_CONFIG = { ...PROVIDER_OAUTH["freebuff"] };
 
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
@@ -203,6 +130,7 @@ export const PROVIDERS = {
   CLAUDE: "claude",
   CODEX: "codex",
   GEMINI: "gemini-cli",
+  QWEN: "qwen",
   QODER: "qoder",
   IFLOW: "iflow",
   ANTIGRAVITY: "antigravity",
@@ -217,10 +145,8 @@ export const PROVIDERS = {
   CLINEPASS: "clinepass",
   GITLAB: "gitlab",
   CODEBUDDY: "codebuddy-cn",
-  CODEBUDDY_INTL: "codebuddy-intl",
+  ZCODE: "zcode",
   KIMCHI: "kimchi",
   GROK_CLI: "grok-cli",
-  TRAE: "trae",
-  WINDSURF: "windsurf",
-  ZED: "zed",
+  FREEBUFF: "freebuff",
 };

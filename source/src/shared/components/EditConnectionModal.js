@@ -1,19 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import PropTypes from "prop-types";
+import { useState, useReducer, useEffect } from "react";
 import Modal from "@/shared/components/Modal";
 import Input from "@/shared/components/Input";
 import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import Select from "@/shared/components/Select";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+
+function asyncReducer(state, action) {
+  switch (action.type) {
+    case "RESET": return { testing: false, testResult: null, validating: false, validationResult: null, saving: false };
+    case "TEST_START": return { ...state, testing: true, testResult: null };
+    case "TEST_DONE": return { ...state, testing: false, testResult: action.result };
+    case "VALIDATE_START": return { ...state, validating: true, validationResult: null };
+    case "VALIDATE_DONE": return { ...state, validating: false, validationResult: action.result };
+    case "SAVE_START": return { ...state, saving: true };
+    case "SAVE_DONE": return { ...state, saving: false };
+    default: return state;
+  }
+}
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
   const [formData, setFormData] = useState({
     name: "",
     priority: 1,
     apiKey: "",
+    projectId: "",
   });
   const [azureData, setAzureData] = useState({
     azureEndpoint: "",
@@ -21,22 +34,21 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     deployment: "",
     organization: "",
   });
-  const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const cloudflareData = { accountId: connection?.provider === "cloudflare-ai" && connection.providerSpecificData ? connection.providerSpecificData.accountId || "" : "" };
   const [region, setRegion] = useState("");
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState(null);
-  const [validating, setValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [async_, dispatch] = useReducer(asyncReducer, { testing: false, testResult: null, validating: false, validationResult: null, saving: false });
+  const { testing, testResult, validating, validationResult, saving } = async_;
 
-  useEffect(() => {
+  const [prevConnection, setPrevConnection] = useState(connection);
+  if (connection !== prevConnection) {
+    setPrevConnection(connection);
     if (connection) {
       setFormData({
         name: connection.name || "",
         priority: connection.priority || 1,
         apiKey: "",
+        projectId: connection.projectId || "",
       });
-      // Load Azure-specific data if present
       if (connection.provider === "azure" && connection.providerSpecificData) {
         setAzureData({
           azureEndpoint: connection.providerSpecificData.azureEndpoint || "",
@@ -45,19 +57,57 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           organization: connection.providerSpecificData.organization || "",
         });
       }
-      if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
-        setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
-      }
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
       if (providerCfg?.regions) {
         const savedRegion = connection.providerSpecificData?.region || providerCfg.defaultRegion || providerCfg.regions[0]?.id || "";
         setRegion(savedRegion);
       }
-      setTestResult(null);
-      setValidationResult(null);
+      dispatch({ type: "RESET" });
     }
-  }, [connection]);
+  }
+
+  const [gcpProjects, setGcpProjects] = useState(null);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [projectsError, setProjectsError] = useState("");
+
+  const isGoogle = connection?.provider === "gemini-cli" || connection?.provider === "antigravity";
+
+  useEffect(() => {
+    if (!isOpen || !connection || !isGoogle) {
+      // Intentional reset when the external connection context changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setGcpProjects(null);
+      setProjectsError("");
+      return;
+    }
+
+    let active = true;
+    const loadGcpProjects = async () => {
+      setLoadingProjects(true);
+      setProjectsError("");
+      try {
+        const res = await fetch(`/api/providers/${connection.id}/gcp-projects`);
+        if (!active) return;
+        const data = await res.json();
+        if (res.ok) {
+          setGcpProjects(data.projects || []);
+        } else {
+          setProjectsError(data.error || "Failed to load GCP projects");
+        }
+      } catch (err) {
+        if (!active) return;
+        setProjectsError(err.message || "Failed to load GCP projects");
+      } finally {
+        if (active) setLoadingProjects(false);
+      }
+    };
+
+    loadGcpProjects();
+    return () => {
+      active = false;
+    };
+  }, [isOpen, connection?.id, isGoogle]);
 
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
@@ -65,6 +115,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
+
   const providerRegions = connection ? (AI_PROVIDERS?.[connection.provider]?.regions || null) : null;
 
   // Build providerSpecificData for region-aware providers
@@ -75,23 +126,25 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const handleTest = async () => {
     if (!connection?.provider) return;
-    setTesting(true);
-    setTestResult(null);
+    dispatch({ type: "TEST_START" });
     try {
-      const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST" });
+      const isGoogle = connection.provider === "gemini-cli" || connection.provider === "antigravity";
+      const body = isGoogle ? { projectId: formData.projectId } : undefined;
+      const res = await fetch(`/api/providers/${connection.id}/test`, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
       const data = await res.json();
-      setTestResult(data.valid ? "success" : "failed");
+      dispatch({ type: "TEST_DONE", result: data.valid ? "success" : "failed" });
     } catch {
-      setTestResult("failed");
-    } finally {
-      setTesting(false);
+      dispatch({ type: "TEST_DONE", result: "failed" });
     }
   };
 
   const handleValidate = async () => {
     if (!connection?.provider || !formData.apiKey) return;
-    setValidating(true);
-    setValidationResult(null);
+    dispatch({ type: "VALIDATE_START" });
     try {
       const res = await fetch("/api/providers/validate", {
         method: "POST",
@@ -105,29 +158,30 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         }),
       });
       const data = await res.json();
-      setValidationResult(data.valid ? "success" : "failed");
+      dispatch({ type: "VALIDATE_DONE", result: data.valid ? "success" : "failed" });
     } catch {
-      setValidationResult("failed");
-    } finally {
-      setValidating(false);
+      dispatch({ type: "VALIDATE_DONE", result: "failed" });
     }
   };
 
   const handleSubmit = async () => {
     if (!connection) return;
-    setSaving(true);
+    dispatch({ type: "SAVE_START" });
     try {
       const updates = {
         name: formData.name,
         priority: formData.priority,
       };
+      if (connection.provider === "gemini-cli" || connection.provider === "antigravity") {
+        updates.projectId = formData.projectId;
+        updates.isProjectIdManual = !!formData.projectId.trim();
+      }
       if (!isOAuth && formData.apiKey) {
         updates.apiKey = formData.apiKey;
         let isValid = validationResult === "success";
         if (!isValid) {
           try {
-            setValidating(true);
-            setValidationResult(null);
+            dispatch({ type: "VALIDATE_START" });
             const res = await fetch("/api/providers/validate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -141,11 +195,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             });
             const data = await res.json();
             isValid = !!data.valid;
-            setValidationResult(isValid ? "success" : "failed");
+            dispatch({ type: "VALIDATE_DONE", result: isValid ? "success" : "failed" });
           } catch {
-            setValidationResult("failed");
-          } finally {
-            setValidating(false);
+            dispatch({ type: "VALIDATE_DONE", result: "failed" });
           }
         }
         if (isValid) {
@@ -154,7 +206,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           updates.lastErrorAt = null;
         }
       }
-      
+
+      // Persist updated region for region-aware providers
+      if (providerRegions && region) {
+        updates.providerSpecificData = buildRegionSpecificData();
+      }
+
       // Add Azure-specific data if this is an Azure connection
       if (isAzure) {
         updates.providerSpecificData = {
@@ -167,14 +224,10 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (isCloudflareAi) {
         updates.providerSpecificData = { accountId: cloudflareData.accountId };
       }
-      // Persist updated region for region-aware providers
-      if (providerRegions && region) {
-        updates.providerSpecificData = buildRegionSpecificData();
-      }
-      
+
       await onSave(updates);
     } finally {
-      setSaving(false);
+      dispatch({ type: "SAVE_DONE" });
     }
   };
 
@@ -201,6 +254,40 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           value={formData.priority}
           onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })}
         />
+
+        {isGoogle && (
+          <>
+            {loadingProjects ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-text">Project ID</span>
+                <div className="text-xs text-text-muted animate-pulse py-2">Loading GCP projects...</div>
+              </div>
+            ) : gcpProjects && gcpProjects.length > 0 && !projectsError ? (
+              <Select
+                label="Project ID"
+                value={formData.projectId}
+                onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                options={[
+                  { value: "", label: "-- Select GCP Project --" },
+                  ...gcpProjects.map((p) => ({ value: p.id, label: `${p.name} (${p.id})` })),
+                ]}
+                hint="Choose which GCP project ID to use for API requests."
+              />
+            ) : (
+              <Input
+                label="Project ID"
+                value={formData.projectId}
+                onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                placeholder="Google GCP Project ID"
+                hint={
+                  projectsError
+                    ? `Failed to load projects (${projectsError}). Please type Project ID manually.`
+                    : "Override the automatically resolved GCP project ID used for API requests."
+                }
+              />
+            )}
+          </>
+        )}
 
         {!isOAuth && (
           <>
@@ -287,30 +374,16 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         )}
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+          <Button
+            onClick={handleSubmit}
+            fullWidth
+            disabled={saving || (isGoogle && formData.projectId !== (connection.projectId || "") && !(gcpProjects && gcpProjects.length > 0 && !projectsError) && testResult !== "success")}
+          >
+            {saving ? "Saving..." : "Save"}
+          </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
         </div>
       </div>
     </Modal>
   );
 }
-
-EditConnectionModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  connection: PropTypes.shape({
-    id: PropTypes.string,
-    name: PropTypes.string,
-    email: PropTypes.string,
-    priority: PropTypes.number,
-    authType: PropTypes.string,
-    provider: PropTypes.string,
-    providerSpecificData: PropTypes.object,
-  }),
-  proxyPools: PropTypes.arrayOf(PropTypes.shape({
-    id: PropTypes.string,
-    name: PropTypes.string,
-  })),
-  onSave: PropTypes.func.isRequired,
-  onClose: PropTypes.func.isRequired,
-};
-

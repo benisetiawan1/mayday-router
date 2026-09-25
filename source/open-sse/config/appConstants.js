@@ -73,9 +73,6 @@ export const CLIENT_METADATA = {
 // Internal anti-loop header
 export const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 
-// Suffix added to client tools when forwarding to Antigravity provider (anti-ban cloaking)
-export const AG_TOOL_SUFFIX = "_ide";
-
 // Suffix added to client tools when forwarding to Claude provider (anti-ban cloaking)
 export const CLAUDE_TOOL_SUFFIX = "_ide";
 
@@ -104,37 +101,13 @@ export const CC_DEFAULT_TOOLS = new Set([
   "ExitPlanMode",
 ]);
 
-// AG native default tools — kept as decoys with neutral description/properties
-// These names must match exactly what AG sends in the real request log
-export const AG_DEFAULT_TOOLS = new Set([
-  "browser_subagent",
-  "command_status",
-  "find_by_name",
-  "generate_image",
-  "grep_search",
-  "list_dir",
-  "list_resources",
-  "multi_replace_file_content",
-  "notify_user",
-  "read_resource",
-  "read_terminal",
-  "read_url_content",
-  "replace_file_content",
-  "run_command",
-  "search_web",
-  "send_command_input",
-  "task_boundary",
-  "view_content_chunk",
-  "view_file",
-  "write_to_file"
-]);
-
 // Antigravity chat/stream headers
+export const ANTIGRAVITY_PRE_RESPONSE_TIMEOUT_CODE = "PRE_RESPONSE_TIMEOUT";
 export const ANTIGRAVITY_HEADERS = {
   "User-Agent": ANTIGRAVITY_IDE_USER_AGENT
 };
 
-// Cloud Code Assist API endpoints differ by client ecosystem.
+// Cloud Code Assist API
 export const CLOUD_CODE_API = {
   "gemini-cli": {
     loadCodeAssist: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
@@ -142,7 +115,6 @@ export const CLOUD_CODE_API = {
   },
   // Project discovery (loadCodeAssist/onboardUser) stays on PROD — the daily host
   // rejects these auth/onboarding calls. Only chat traffic uses the daily host
-  // (see transport.apiEndpoint in registry/antigravity.js, set to bypass prod 429).
   antigravity: {
     loadCodeAssist: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
     onboardUser: "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
@@ -190,6 +162,7 @@ export const OAUTH_ENDPOINTS = {
   google:    { token: "https://oauth2.googleapis.com/token", auth: "https://accounts.google.com/o/oauth2/auth" },
   openai:    { token: PROVIDER_OAUTH["codex"]?.tokenUrl, auth: PROVIDER_OAUTH["codex"]?.authorizeUrl },
   anthropic: { token: PROVIDER_OAUTH["claude"]?.tokenUrl, auth: "https://api.anthropic.com/v1/oauth/authorize" }, // ≠ claude.authorizeUrl (claude.ai login) — keep
+  qwen:      { token: PROVIDER_OAUTH["qwen"]?.tokenUrl, auth: PROVIDER_OAUTH["qwen"]?.deviceCodeUrl },
   iflow:     { token: PROVIDER_OAUTH["iflow"]?.tokenUrl, auth: PROVIDER_OAUTH["iflow"]?.authorizeUrl },
   github:    { token: PROVIDER_OAUTH["github"]?.tokenUrl, auth: PROVIDER_OAUTH["github"]?.authorizeUrl, deviceCode: PROVIDER_OAUTH["github"]?.deviceCodeUrl },
 };

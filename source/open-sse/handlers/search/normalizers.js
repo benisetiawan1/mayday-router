@@ -1,6 +1,7 @@
 /**
  * Search Response Normalizers
  *
+ * Ported from OmniRoute open-sse/handlers/search.ts.
  * Each normalizer maps a provider-specific response into the unified SearchResult shape.
  */
 
@@ -26,7 +27,7 @@ function makeResult(providerId, item, idx, now) {
       image_url: item.image_url || null,
     },
     citation: { provider: providerId, retrieved_at: now, rank: idx + 1 },
-    provider_raw: null,
+    provider_raw: item.provider_data || item.provider_raw || null,
   };
 }
 
@@ -71,7 +72,13 @@ function normalizePerplexity(data, _query, _searchType) {
 function normalizeExa(data, _query, _searchType) {
   const now = new Date().toISOString();
   const items = data.results;
-  if (!Array.isArray(items)) return { results: [], totalResults: null };
+  const metadata = {
+    requestId: data.requestId || null,
+    resolvedSearchType: data.resolvedSearchType || data.searchType || null,
+    costDollars: data.costDollars || null,
+    output: data.output || null,
+  };
+  if (!Array.isArray(items)) return { results: [], totalResults: null, metadata };
   const results = items.map((item, idx) =>
     makeResult("exa", {
       title: item.title,
@@ -84,9 +91,24 @@ function normalizeExa(data, _query, _searchType) {
       image_url: item.image,
       full_text: item.text,
       text_format: "text",
+      provider_data: {
+        id: item.id,
+        publishedDate: item.publishedDate || null,
+        author: item.author || null,
+        image: item.image || null,
+        favicon: item.favicon || null,
+        highlightScores: item.highlightScores || null,
+        summary: item.summary || null,
+        subpages: item.subpages || null,
+        extras: item.extras || null,
+      },
     }, idx, now)
   );
-  return { results, totalResults: results.length };
+  return {
+    results,
+    totalResults: results.length,
+    metadata,
+  };
 }
 
 function normalizeTavily(data, _query, _searchType) {
@@ -242,16 +264,15 @@ function normalizeXquik(data, _query, _searchType) {
 
 function normalizeOllamaSearch(data, _query, _searchType) {
   const now = new Date().toISOString();
-  const items = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
+  const items = Array.isArray(data.results) ? data.results : [];
   const results = items.map((item, idx) =>
     makeResult("ollama-search", {
       title: item.title,
       url: item.url,
-      snippet: item.content || item.snippet || "",
-      full_text: item.content,
-      text_format: "text",
+      snippet: item.content || "",
       published_at: item.published_at || null,
-      source_type: item.source || null,
+      full_text: item.content || undefined,
+      text_format: "text",
     }, idx, now)
   );
   return { results, totalResults: results.length };
@@ -261,12 +282,13 @@ function normalizeGlmSearch(data, _query, _searchType) {
   const now = new Date().toISOString();
   // MCP envelope: { result: { content: [{ type: "text", text: "<json>" }] } }
   let payload = data;
-  const textContent = data?.result?.content?.[0]?.text;
-  if (typeof textContent === "string") {
-    try { payload = JSON.parse(textContent); } catch { payload = {}; }
-  }
+  try {
+    const rawText = data?.result?.content?.[0]?.text;
+    if (typeof rawText === "string") payload = JSON.parse(rawText);
+  } catch {}
+
   const items = Array.isArray(payload?.results) ? payload.results
-    : Array.isArray(payload?.news) ? payload.news
+    : Array.isArray(payload?.items) ? payload.items
     : Array.isArray(payload) ? payload
     : [];
   const results = items.map((item, idx) =>
@@ -274,9 +296,12 @@ function normalizeGlmSearch(data, _query, _searchType) {
       title: item.title,
       url: item.link || item.url,
       snippet: item.content || "",
-      published_at: item.publish_date || item.published_at || null,
-      favicon_url: item.icon || null,
-      source_type: item.media || null,
+      published_at: item.publish_time || item.published_at || null,
+      author: item.source || null,
+      image_url: item.icon || null,
+      source_type: "mcp_web_search_prime",
+      full_text: item.content || undefined,
+      text_format: "text",
     }, idx, now)
   );
   return { results, totalResults: results.length };
@@ -300,7 +325,7 @@ const NORMALIZERS = {
 
 /**
  * Dispatch to the appropriate normalizer based on providerId.
- * @returns {{results: Array, totalResults: number|null, pagination?: object}}
+ * @returns {{results: Array, totalResults: number|null}}
  */
 export function normalizeSearchResponse(providerId, data, query, searchType) {
   const fn = NORMALIZERS[providerId];

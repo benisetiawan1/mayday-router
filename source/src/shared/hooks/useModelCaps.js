@@ -59,25 +59,12 @@ export function useModelCaps() {
   const [byId, setById] = useState(() => cache?.byId || {});
 
   useEffect(() => {
+    if (cache) return;
     let alive = true;
-    const sync = (maps) => {
+    loadModelCaps().then((maps) => {
       if (alive) { setByFull(maps.byFull); setById(maps.byId); }
-    };
-    if (cache) {
-      sync(cache);
-    } else {
-      loadModelCaps().then(sync);
-    }
-    // Custom models change at runtime — drop the shared cache and refetch
-    const invalidate = () => {
-      cache = null;
-      loadModelCaps().then(sync);
-    };
-    window.addEventListener("customModelChanged", invalidate);
-    return () => {
-      alive = false;
-      window.removeEventListener("customModelChanged", invalidate);
-    };
+    });
+    return () => { alive = false; };
   }, []);
 
   const getCaps = useCallback(

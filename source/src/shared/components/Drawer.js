@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { cn } from "@/shared/utils/cn";
+
+const DRAWER_WIDTHS = {
+  sm: "w-full sm:w-[400px] max-w-full",
+  md: "w-full sm:w-[500px] max-w-full",
+  lg: "w-full sm:w-[600px] max-w-full",
+  xl: "w-full sm:w-[800px] max-w-full",
+  full: "w-full",
+};
 
 export default function Drawer({
   isOpen,
@@ -11,13 +19,11 @@ export default function Drawer({
   width = "md",
   className
 }) {
-  const widths = {
-    sm: "w-[400px]",
-    md: "w-[500px]",
-    lg: "w-[600px]",
-    xl: "w-[800px]",
-    full: "w-full",
-  };
+  const widths = DRAWER_WIDTHS;
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -30,11 +36,11 @@ export default function Drawer({
 
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) onClose();
+      if (e.key === "Escape" && isOpen) onCloseRef.current();
     };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -49,7 +55,7 @@ export default function Drawer({
 
       {/* Drawer panel */}
       <div className={cn(
-        "absolute right-0 top-0 h-full bg-surface flex flex-col",
+        "absolute right-0 top-0 h-full bg-surface flex flex-col max-w-full",
         "shadow-[var(--shadow-elev)]",
         "slide-in-right",
         "border-l border-border-subtle",

@@ -4,9 +4,20 @@ import {
   clearAccountError,
   extractApiKey,
   isValidApiKey,
+  isProviderAllowed,
+  isKindAllowed,
+  isTrustedInternalRequest,
 } from "../services/auth.js";
+import {
+  isProviderFullyBlocked,
+  getProviderShortestCooldownMs,
+  isProviderInCooldown,
+  recordProviderFailure,
+} from "open-sse/services/accountFallback.js";
+import { getProxyHash } from "@/lib/network/connectionProxy";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
+import { isModelAllowed } from "../services/allowedModels.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -53,13 +64,16 @@ export async function handleEmbeddings(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (settings.requireApiKey) {
+  let apiKeyInfo = null;
+  // Trusted internal (dashboard/CLI) requests act as the local owner — bypass ACL.
+  const trustedInternal = await isTrustedInternalRequest(request);
+  if (!trustedInternal && settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
+    apiKeyInfo = await isValidApiKey(apiKey);
+    if (!apiKeyInfo) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
@@ -68,6 +82,11 @@ export async function handleEmbeddings(request) {
   if (!modelStr) {
     log.warn("EMBEDDINGS", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
+  }
+
+  if (!isKindAllowed(apiKeyInfo, "embedding")) {
+    log.warn("AUTH", "Embedding kind not allowed for API key");
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "Embedding requests are not allowed for this API key");
   }
 
   if (!body.input) {
@@ -83,10 +102,50 @@ export async function handleEmbeddings(request) {
 
   const { provider, model } = modelInfo;
 
+  if (!(await isProviderAllowed(apiKeyInfo, provider))) {
+    log.warn("AUTH", `Provider "${provider}" not allowed for API key`, { provider });
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider "${provider}" is not allowed for this API key`);
+  }
+
+  // Normalize model name: handle double-prefix (e.g. "nvidia/nvidia/nv-embedqa-e5-v5" → also try "nvidia/nv-embedqa-e5-v5")
+  const resolvedModelStr = `${provider}/${model}`;
+  const candidates = [resolvedModelStr];
+  if (model.startsWith(`${provider}/`)) {
+    // User sent "provider/provider/model" — the listed form is "provider/model"
+    candidates.push(`${provider}/${model.slice(provider.length + 1)}`);
+  }
+  if (modelStr !== resolvedModelStr && !candidates.includes(modelStr)) {
+    candidates.push(modelStr);
+  }
+  let isAllowed = false;
+  for (const c of candidates) {
+    if (await isModelAllowed(c, apiKeyInfo)) { isAllowed = true; break; }
+  }
+  if (!isAllowed) {
+    log.warn("EMBEDDINGS", `Model not in available models list`, { model: resolvedModelStr, candidates });
+    return errorResponse(HTTP_STATUS.NOT_FOUND, `Model "${candidates[candidates.length - 1]}" is not available. Only models listed in /v1/models can be used.`);
+  }
+
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
   } else {
     log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
+  }
+
+  // Circuit-breaker toggle (mirrors handleChat). When disabled, skip the
+  // provider-level short-circuit so embeddings honor the same toggle as chat.
+  const circuitBreakerEnabled = settings.circuitBreakerEnabled !== false && settings.circuitBreakerEnabled !== 0;
+  if (circuitBreakerEnabled && isProviderFullyBlocked(provider)) {
+    const cooldownMs = getProviderShortestCooldownMs(provider);
+    const retryAfterSec = Math.ceil(cooldownMs / 1000) || 30;
+    const retryAfterTimestamp = new Date(Date.now() + cooldownMs).toISOString();
+    log.warn("GATE", `${provider} circuit breaker OPEN — short-circuiting embeddings before credential lookup`);
+    return unavailableResponse(
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      `[${provider}/${model}] Provider temporarily unavailable (circuit breaker open)`,
+      retryAfterTimestamp,
+      `${retryAfterSec}s`
+    );
   }
 
   // Credential + fallback loop (mirrors handleChat)
@@ -116,6 +175,17 @@ export async function handleEmbeddings(request) {
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+
+    if (circuitBreakerEnabled) {
+      const proxyHash = getProxyHash(credentials.providerSpecificData || {});
+      if (isProviderInCooldown(provider, proxyHash)) {
+        log.warn("AUTH", `${provider} proxy bucket ${proxyHash} circuit breaker OPEN — skipping account ${credentials.connectionName}`);
+        excludeConnectionIds.add(credentials.connectionId);
+        lastError = "Provider temporarily unavailable (circuit breaker open)";
+        lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
+        continue;
+      }
+    }
 
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
@@ -150,7 +220,11 @@ export async function handleEmbeddings(request) {
       return result.response;
     }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { disableLock: !circuitBreakerEnabled });
+
+    if (circuitBreakerEnabled) {
+      recordProviderFailure(provider, result.status, result.error, log, credentials.connectionId, getProxyHash(credentials.providerSpecificData || {}));
+    }
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

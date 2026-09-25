@@ -1,43 +1,50 @@
-// Mayday custom: periodic age-based DB cleanup.
-// requestDetails is also count-pruned by requestDetailsRepo, but usageHistory
-// and usageDaily grow unbounded — this bounds them by AGE so the SQLite
-// file never balloons. Self-starts on import (startDbCleanupCron).
-import { getAdapter } from "../driver.js";
+/**
+ * Mayday: Periodic cleanup of aged data from requestDetails/usageHistory tables
+ * Runs every 24 hours, removes entries older than 30 days
+ */
 
-const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6h
-const REQUEST_DETAILS_MAX_AGE_DAYS = 7;
-const USAGE_HISTORY_MAX_AGE_DAYS = 30;
-const USAGE_DAILY_MAX_AGE_DAYS = 180;
+import { getAdapterSync } from "../driver.js";
 
-function daysAgoIso(days) {
-  return new Date(Date.now() - days * 86400000).toISOString();
+const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_AGE_DAYS = 30;
+
+let cleanupStarted = false;
+
+export function startDbCleanupCron() {
+  if (cleanupStarted) return;
+  cleanupStarted = true;
+
+  console.log("[DB][cleanup] Starting periodic cleanup cron (every 24h, max age 30d)");
+
+  // Run first cleanup after 5 minutes
+  setTimeout(runCleanup, 5 * 60 * 1000);
+
+  // Then every 24 hours
+  setInterval(runCleanup, CLEANUP_INTERVAL_MS);
 }
 
 async function runCleanup() {
   try {
-    const db = await getAdapter();
-    const cutoffDetails = daysAgoIso(REQUEST_DETAILS_MAX_AGE_DAYS);
-    const cutoffHistory = daysAgoIso(USAGE_HISTORY_MAX_AGE_DAYS);
-    const cutoffDaily = daysAgoIso(USAGE_DAILY_MAX_AGE_DAYS).slice(0, 10); // YYYY-MM-DD
-    db.transaction(() => {
-      db.run(`DELETE FROM requestDetails WHERE timestamp < ?`, [cutoffDetails]);
-      db.run(`DELETE FROM usageHistory WHERE timestamp < ?`, [cutoffHistory]);
-      db.run(`DELETE FROM usageDaily WHERE dateKey < ?`, [cutoffDaily]);
-    });
-    try { db.checkpoint(); } catch {}
-    console.log(
-      `[dbCleanupCron] purged records older than ${REQUEST_DETAILS_MAX_AGE_DAYS}d/${USAGE_HISTORY_MAX_AGE_DAYS}d/${USAGE_DAILY_MAX_AGE_DAYS}d`
-    );
-  } catch (e) {
-    console.error("[dbCleanupCron] cleanup failed:", e);
-  }
-}
+    const adapter = getAdapterSync();
+    const cutoffDate = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-export function startDbCleanupCron() {
-  if (global._dbCleanupCronStarted) return;
-  global._dbCleanupCronStarted = true;
-  const first = setTimeout(runCleanup, 60000); // kick off ~1min after boot
-  if (typeof first.unref === "function") first.unref();
-  const t = setInterval(runCleanup, CLEANUP_INTERVAL_MS);
-  if (typeof t.unref === "function") t.unref();
+    // Cleanup requestDetails
+    const deletedRequests = adapter.run(
+      "DELETE FROM requestDetails WHERE timestamp < ?",
+      [cutoffDate]
+    );
+
+    // Cleanup usageHistory
+    const deletedUsage = adapter.run(
+      "DELETE FROM usageHistory WHERE timestamp < ?",
+      [cutoffDate]
+    );
+
+    const totalDeleted = (deletedRequests?.changes || 0) + (deletedUsage?.changes || 0);
+    if (totalDeleted > 0) {
+      console.log(`[DB][cleanup] Removed ${totalDeleted} aged entries (>${MAX_AGE_DAYS} days old)`);
+    }
+  } catch (err) {
+    console.error("[DB][cleanup] Error during cleanup:", err.message);
+  }
 }

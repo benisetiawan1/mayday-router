@@ -38,6 +38,11 @@ export async function PUT(request, { params }) {
       if (sanitizedBaseUrl.endsWith("/messages")) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
       }
+      // Ensure Anthropic-compatible base URLs end with /v1 so runtime /messages
+      // resolves to /v1/messages (matches validation and executor behavior).
+      if (!sanitizedBaseUrl.endsWith("/v1")) {
+        sanitizedBaseUrl = `${sanitizedBaseUrl}/v1`;
+      }
     }
 
     // Sanitize Base URL for Custom Embedding (strip trailing slash and /embeddings)
@@ -58,9 +63,10 @@ export async function PUT(request, { params }) {
       updates.apiType = apiType;
     }
 
-    const updated = await updateProviderNode(id, updates);
-
-    const connections = await getProviderConnections({ provider: id });
+    const [updated, connections] = await Promise.all([
+      updateProviderNode(id, updates),
+      getProviderConnections({ provider: id }),
+    ]);
     await Promise.all(connections.map((connection) => (
       updateProviderConnection(connection.id, {
         providerSpecificData: {

@@ -17,8 +17,11 @@ const kimchi = {
       throw new Error("Missing Kimchi token");
     }
 
-    const validationUrl = config.validationUrl || "https://api.cast.ai/v1/llm/openai/supported-providers";
-    const validationRes = await fetch(validationUrl, {
+    if (!config?.validationUrl) {
+      throw new Error("Kimchi validation URL is not configured");
+    }
+
+    const validationRes = await fetch(config.validationUrl, {
       method: "GET",
       headers: {
         Accept: "application/json",

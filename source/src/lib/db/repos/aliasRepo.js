@@ -29,25 +29,38 @@ export async function getCustomModels() {
   return Object.values(all);
 }
 
-// Atomic upsert inside transaction to prevent duplicate races.
-// Re-adding an existing model updates caps/name without resetting omitted fields.
-export async function addCustomModel({ providerAlias, id, type = "llm", name, caps }) {
+// Atomic check-then-insert inside transaction to prevent duplicate races
+export async function addCustomModel({ providerAlias, id, type = "llm", name }) {
   const k = customKey(providerAlias, id, type);
   const db = await getAdapter();
   let added = false;
   db.transaction(() => {
-    const row = db.get(`SELECT value FROM kv WHERE scope = 'customModels' AND key = ?`, [k]);
-    if (row) {
-      const prev = parseJson(row.value) || {};
-      const next = { ...prev, ...(name ? { name } : {}), ...(caps ? { caps } : {}) };
-      db.run(`UPDATE kv SET value = ? WHERE scope = 'customModels' AND key = ?`, [stringifyJson(next), k]);
-      return;
-    }
-    const value = stringifyJson({ providerAlias, id, type, name: name || id, ...(caps ? { caps } : {}) });
+    const row = db.get(`SELECT 1 FROM kv WHERE scope = 'customModels' AND key = ?`, [k]);
+    if (row) return;
+    const value = stringifyJson({ providerAlias, id, type, name: name || id });
     db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, value]);
     added = true;
   });
   return added;
+}
+
+export async function addCustomModelsBulk(models = []) {
+  if (!Array.isArray(models) || models.length === 0) return 0;
+  const db = await getAdapter();
+  let addedCount = 0;
+  db.transaction(() => {
+    for (const item of models) {
+      const { providerAlias, id, type = "llm", name } = item || {};
+      if (!providerAlias || !id) continue;
+      const k = customKey(providerAlias, id, type);
+      const row = db.get(`SELECT 1 FROM kv WHERE scope = 'customModels' AND key = ?`, [k]);
+      if (row) continue;
+      const value = stringifyJson({ providerAlias, id, type, name: name || id });
+      db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, value]);
+      addedCount += 1;
+    }
+  });
+  return addedCount;
 }
 
 export async function deleteCustomModel({ providerAlias, id, type = "llm" }) {

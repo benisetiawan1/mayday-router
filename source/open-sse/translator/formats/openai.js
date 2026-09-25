@@ -1,5 +1,6 @@
 // OpenAI helper functions for translator
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES } from "../schema/index.js";
+import { collapseTextParts } from "../concerns/message.js";
 
 // Re-export valid-type lists (moved to schema/blocks.js) to keep existing importers working.
 export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
@@ -53,8 +54,15 @@ export function filterToOpenAIFormat(body, opts = {}) {
       if (filteredContent.length === 0) {
         filteredContent.push({ type: OPENAI_BLOCK.TEXT, text: "" });
       }
-      
-      return { ...msg, content: filteredContent };
+
+      // When preserving cache_control, do not collapse text parts into a plain
+      // string — strings cannot carry cache_control metadata (DashScope/alicode).
+      const hasCacheControl = filteredContent.some(b => b.cache_control);
+      const content = keepCache && hasCacheControl
+        ? filteredContent
+        : collapseTextParts(filteredContent);
+
+      return { ...msg, content };
     }
     
     return msg;

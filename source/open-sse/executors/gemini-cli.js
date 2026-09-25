@@ -27,6 +27,17 @@ export class GeminiCLIExecutor extends BaseExecutor {
     this._currentModel = model;
     // Cloud Code Assist wraps the Gemini payload: { project, model, request: <body> }
     if (body && body.request && body.model) return body;
+    
+    // Strip reasoning_effort and other non-standard fields that Google rejects
+    if (body) {
+      delete body.reasoning_effort;
+      delete body.thinking;
+      delete body.reasoning;
+      delete body.output_config;
+      delete body.thinkingConfig;
+      delete body.enable_thinking;
+      delete body.thinking_budget;
+    }
     return {
       project: credentials?.projectId || body?.project,
       model,
@@ -86,4 +97,3 @@ export class GeminiCLIExecutor extends BaseExecutor {
   }
 }
 
-export default GeminiCLIExecutor;

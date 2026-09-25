@@ -1,19 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useReducer } from "react";
 import { MITM_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { MitmServerCard, MitmToolCard } from "@/app/(dashboard)/dashboard/cli-tools/components";
 
-export default function MitmPageClient() {
-  const [connections, setConnections] = useState([]);
-  const [apiKeys, setApiKeys] = useState([]);
-  const [modelAliases, setModelAliases] = useState({});
-  const [cloudEnabled, setCloudEnabled] = useState(false);
-  const [expandedTool, setExpandedTool] = useState(null);
-  const [mitmStatus, setMitmStatus] = useState({ running: false, certExists: false, dnsStatus: {}, hasCachedPassword: false });
+function dataReducer(state, action) {
+  switch (action.type) {
+    case "SET_CONNECTIONS": return { ...state, connections: action.value };
+    case "SET_API_KEYS": return { ...state, apiKeys: action.value };
+    case "SET_ALIASES": return { ...state, modelAliases: action.value };
+    case "SET_CLOUD": return { ...state, cloudEnabled: action.value };
+    case "SET_MITM_STATUS": return { ...state, mitmStatus: action.value };
+    default: return state;
+  }
+}
 
+export default function MitmPageClient() {
+  const [data, dispatch] = useReducer(dataReducer, {
+    connections: [],
+    apiKeys: [],
+    modelAliases: {},
+    cloudEnabled: false,
+    mitmStatus: { running: false, certExists: false, dnsStatus: {}, hasCachedPassword: false },
+  });
+  const { connections, apiKeys, modelAliases, cloudEnabled, mitmStatus } = data;
+  const [expandedTool, setExpandedTool] = useState(null);
+
+  /* eslint-disable react-hooks/immutability --
+     One-time bootstrap fetch on mount. The fetch* functions are declared
+     further down; captured by closure at runtime. */
   useEffect(() => {
     fetchConnections();
     fetchApiKeys();
@@ -25,8 +42,8 @@ export default function MitmPageClient() {
     try {
       const res = await fetch("/api/providers");
       if (res.ok) {
-        const data = await res.json();
-        setConnections(data.connections || []);
+        const d = await res.json();
+        dispatch({ type: "SET_CONNECTIONS", value: d.connections || [] });
       }
     } catch { /* ignore */ }
   };
@@ -35,8 +52,8 @@ export default function MitmPageClient() {
     try {
       const res = await fetch("/api/keys");
       if (res.ok) {
-        const data = await res.json();
-        setApiKeys(data.keys || []);
+        const d = await res.json();
+        dispatch({ type: "SET_API_KEYS", value: d.keys || [] });
       }
     } catch { /* ignore */ }
   };
@@ -45,8 +62,8 @@ export default function MitmPageClient() {
     try {
       const res = await fetch("/api/models/alias");
       if (res.ok) {
-        const data = await res.json();
-        setModelAliases(data.aliases || {});
+        const d = await res.json();
+        dispatch({ type: "SET_ALIASES", value: d.aliases || {} });
       }
     } catch { /* ignore */ }
   };
@@ -55,8 +72,8 @@ export default function MitmPageClient() {
     try {
       const res = await fetch("/api/settings");
       if (res.ok) {
-        const data = await res.json();
-        setCloudEnabled(data.cloudEnabled || false);
+        const d = await res.json();
+        dispatch({ type: "SET_CLOUD", value: d.cloudEnabled || false });
       }
     } catch { /* ignore */ }
   };
@@ -87,7 +104,7 @@ export default function MitmPageClient() {
       <MitmServerCard
         apiKeys={apiKeys}
         cloudEnabled={cloudEnabled}
-        onStatusChange={setMitmStatus}
+        onStatusChange={(v) => dispatch({ type: "SET_MITM_STATUS", value: v })}
       />
 
       {/* Tool Cards */}
@@ -96,19 +113,16 @@ export default function MitmPageClient() {
           <MitmToolCard
             key={toolId}
             tool={tool}
-            isExpanded={expandedTool === toolId}
+            status={{ isExpanded: expandedTool === toolId, hasCachedPassword: mitmStatus.hasCachedPassword || false, needsSudoPassword: mitmStatus.needsSudoPassword !== false, isWin: mitmStatus.isWin === true }}
             onToggle={() => setExpandedTool(expandedTool === toolId ? null : toolId)}
             serverRunning={mitmStatus.running}
             dnsActive={mitmStatus.dnsStatus?.[toolId] || false}
-            hasCachedPassword={mitmStatus.hasCachedPassword || false}
-            needsSudoPassword={mitmStatus.needsSudoPassword !== false}
-            isWin={mitmStatus.isWin === true}
             apiKeys={apiKeys}
             activeProviders={getActiveProviders()}
             hasActiveProviders={hasActiveProviders()}
             modelAliases={modelAliases}
             cloudEnabled={cloudEnabled}
-            onDnsChange={(data) => setMitmStatus(prev => ({ ...prev, dnsStatus: data.dnsStatus ?? prev.dnsStatus }))}
+            onDnsChange={(d) => dispatch({ type: "SET_MITM_STATUS", value: { ...mitmStatus, dnsStatus: d.dnsStatus ?? mitmStatus.dnsStatus } })}
           />
         ))}
       </div>

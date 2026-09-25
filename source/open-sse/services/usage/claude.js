@@ -19,38 +19,44 @@ const CLAUDE_CONFIG = {
 const OAUTH_429_COOLDOWN_MS = 180000;
 const oauthCooldown = new Map();
 
-// Dedup + short TTL cache per access token. Many tabs / many accounts / auto-refresh
-// all funnel through here; without this each call hits Anthropic and triggers 429.
 const USAGE_CACHE_TTL_MS = 300000;
-const usageCache = new Map(); // token -> { promise } | { result, expiresAt }
+const USAGE_CACHE_MAX_ENTRIES = 100;
+const usageCache = new Map();
+
+function pruneUsageCache() {
+  const now = Date.now();
+  for (const [token, entry] of usageCache) {
+    if (!entry.promise && entry.expiresAt <= now) usageCache.delete(token);
+  }
+  while (usageCache.size > USAGE_CACHE_MAX_ENTRIES) {
+    usageCache.delete(usageCache.keys().next().value);
+  }
+}
 
 export async function getClaudeUsage(accessToken, proxyOptions = null, options = {}) {
-  const force = options?.force === true;
-
-  // Serve in-flight or fresh cached result (skip on manual force)
+  const force = options.force === true;
+  pruneUsageCache();
   if (!force && accessToken) {
-    const hit = usageCache.get(accessToken);
-    if (hit?.promise) return hit.promise;
-    if (hit && hit.expiresAt > Date.now()) return hit.result;
+    const cached = usageCache.get(accessToken);
+    if (cached?.promise) return cached.promise;
+    if (cached?.expiresAt > Date.now()) return cached.result;
   }
 
-  const stale = (!force && accessToken && usageCache.get(accessToken)?.result) || null;
-
-  const promise = (async () => {
-    const result = await fetchClaudeUsageRaw(accessToken, proxyOptions);
-    // Only cache real quota data, not soft-failure {message: ...} payloads
-    if (accessToken && result?.quotas) {
-      usageCache.set(accessToken, {
-        result,
-        expiresAt: Date.now() + USAGE_CACHE_TTL_MS,
-      });
+  const stale = !force && accessToken ? usageCache.get(accessToken)?.result : null;
+  const promise = fetchClaudeUsageRaw(accessToken, proxyOptions).then((result) => {
+    if (accessToken && result?.quotas && Object.keys(result.quotas).length > 0) {
+      if (usageCache.get(accessToken)?.promise === promise) {
+        usageCache.set(accessToken, { result, expiresAt: Date.now() + USAGE_CACHE_TTL_MS });
+        pruneUsageCache();
+      }
       return result;
     }
-    // Soft failure (429/error): prefer the last good read over a transient error
-    if (stale) return stale;
-    return result;
-  })();
-
+    if (accessToken && usageCache.get(accessToken)?.promise === promise) {
+      if (stale) usageCache.set(accessToken, { result: stale, expiresAt: Date.now() + USAGE_CACHE_TTL_MS });
+      else usageCache.delete(accessToken);
+    }
+    return stale || result;
+  });
   if (accessToken) usageCache.set(accessToken, { promise });
   return promise;
 }
@@ -102,32 +108,12 @@ async function fetchClaudeUsageRaw(accessToken, proxyOptions = null) {
         quotas["weekly (7d)"] = createQuotaObject(data.seven_day);
       }
 
-      // Parse model-specific weekly windows (e.g. seven_day_sonnet, seven_day_opus, seven_day_fable)
-      const MODEL_DISPLAY_NAMES = {
-        fable_5_1: "fable",
-        fable_5: "fable",
-      };
-
+      // Parse model-specific weekly windows (e.g. seven_day_sonnet, seven_day_opus)
       for (const [key, value] of Object.entries(data)) {
         if (key.startsWith("seven_day_") && key !== "seven_day" && hasUtilization(value)) {
-          const rawName = key.replace("seven_day_", "");
-          const modelName = MODEL_DISPLAY_NAMES[rawName] || rawName;
+          const modelName = key.replace("seven_day_", "");
           quotas[`weekly ${modelName} (7d)`] = createQuotaObject(value);
-        } else if ((key === "fable" || key === "fable_5" || key === "fable_5_1") && hasUtilization(value)) {
-          quotas["weekly fable (7d)"] = createQuotaObject(value);
         }
-      }
-
-      // Fallback: surface Fable quota row if weekly window exists but Fable was not returned yet
-      if (!quotas["weekly fable (7d)"] && hasUtilization(data.seven_day)) {
-        quotas["weekly fable (7d)"] = {
-          used: 0,
-          total: 100,
-          remaining: 100,
-          remainingPercentage: 100,
-          resetAt: parseResetTime(data.seven_day.resets_at),
-          unlimited: false,
-        };
       }
 
       return {

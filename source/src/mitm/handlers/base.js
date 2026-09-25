@@ -6,14 +6,14 @@ const ROUTER_BASE = String(process.env.MITM_ROUTER_BASE || DEFAULT_LOCAL_ROUTER)
   .replace(/\/+$/, "") || DEFAULT_LOCAL_ROUTER;
 const API_KEY = process.env.ROUTER_API_KEY;
 
-// Headers that must not be forwarded to 9Router
+// Headers that must not be forwarded to Mayday
 const STRIP_HEADERS = new Set([
   "host", "content-length", "connection", "transfer-encoding",
   "content-type", "authorization"
 ]);
 
 /**
- * Send body to 9Router at the given path and return the fetch Response object.
+ * Send body to Mayday at the given path and return the fetch Response object.
  * Optionally forwards client headers (stripped of hop-by-hop / overridden keys).
  */
 async function fetchRouter(openaiBody, path = "/v1/chat/completions", clientHeaders = {}) {
@@ -55,14 +55,13 @@ async function pipeSSE(routerRes, res, dumper) {
     return;
   }
 
-  const reader = routerRes.body.getReader();
   const decoder = new TextDecoder();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) { if (dumper) dumper.end(); res.end(); break; }
+  for await (const value of routerRes.body) {
     if (dumper) dumper.writeChunk(value);
     res.write(decoder.decode(value, { stream: true }));
   }
+  if (dumper) dumper.end();
+  res.end();
 }
 
 /**
@@ -70,7 +69,7 @@ async function pipeSSE(routerRes, res, dumper) {
  * Reads SSE data: lines, parses JSON, calls transformFn(parsed, state),
  * and writes returned SSE strings to the client response.
  *
- * @param {Response} routerRes - Fetch Response from 9Router
+ * @param {Response} routerRes - Fetch Response from Mayday
  * @param {http.ServerResponse} res - Client response
  * @param {Function} transformFn - (parsedChunk, state) => string|string[]|null
  * @param {object} state - Mutable state object shared across chunks and flush
@@ -86,14 +85,10 @@ async function pipeTransformedSSE(routerRes, res, transformFn, state) {
     return;
   }
 
-  const reader = routerRes.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: false });
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
+  for await (const value of routerRes.body) {
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
@@ -149,7 +144,7 @@ async function pipeTransformedSSE(routerRes, res, transformFn, state) {
  * Reads SSE data: lines, parses JSON, calls transformFn(parsed, state),
  * and writes returned Uint8Array frames to the client response.
  *
- * @param {Response} routerRes - Fetch Response from 9Router
+ * @param {Response} routerRes - Fetch Response from Mayday
  * @param {http.ServerResponse} res - Client response
  * @param {Function} transformFn - (parsedChunk, state) => Uint8Array|Uint8Array[]|null
  * @param {object} state - Mutable state object shared across chunks and flush
@@ -167,14 +162,10 @@ async function pipeTransformedEventStream(routerRes, res, transformFn, state) {
     return;
   }
 
-  const reader = routerRes.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: false });
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
+  for await (const value of routerRes.body) {
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";

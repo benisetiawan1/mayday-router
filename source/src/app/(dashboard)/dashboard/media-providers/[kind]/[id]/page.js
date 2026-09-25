@@ -12,6 +12,7 @@ import { KIND_EXAMPLE_CONFIG } from "./components/exampleShared";
 import { EmbeddingExampleCard } from "./components/EmbeddingExampleCard";
 import { TtsExampleCard } from "./components/TtsExampleCard";
 import { GenericExampleCard } from "./components/GenericExampleCard";
+import { ExaSearchExampleCard } from "./components/ExaSearchExampleCard";
 import { SttExampleCard } from "./components/SttExampleCard";
 
 // MediaProviderDetailPage
@@ -84,7 +85,7 @@ export default function MediaProviderDetailPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="size-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${provider.color}15` }}>
             <ProviderIcon
-              src={`/providers/${provider.id}.png`}
+              src={`/providers/${provider.id}.webp`}
               alt={provider.name}
               size={48}
               className="object-contain rounded-lg max-w-[48px] max-h-[48px]"
@@ -192,7 +193,8 @@ export default function MediaProviderDetailPage() {
       )}
       {kind === "tts" && <TtsExampleCard providerId={id} />}
       {kind === "stt" && !isCustom && <SttExampleCard providerId={id} />}
-      {!isCustom && KIND_EXAMPLE_CONFIG[kind] && <GenericExampleCard providerId={id} kind={kind} />}
+      {!isCustom && kind === "webSearch" && id === "exa" && <ExaSearchExampleCard providerId={id} />}
+      {!isCustom && KIND_EXAMPLE_CONFIG[kind] && (kind !== "webSearch" || id !== "exa") && <GenericExampleCard providerId={id} kind={kind} />}
 
       {isCustom && (
         <AddCustomEmbeddingModal

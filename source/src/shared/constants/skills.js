@@ -1,7 +1,6 @@
 // Agent Skills metadata — single source of truth for /dashboard/skills page.
 // Each skill = 1 URL the user copies and pastes to any AI agent.
 // Skills are SELF-HOSTED: SKILL.md files live in the image at /public/skills/*
-// and are served from the same origin as the dashboard (private repo OK).
 
 const SKILL_PATH = "skills";
 
@@ -77,10 +76,10 @@ export const SKILLS = [
     },
   ];
 
-export function getSkillRawUrl(id) {
-  return `${SKILLS_BASE}/${id}/SKILL.md`;
-}
+  export function getSkillRawUrl(id) {
+    return `${SKILLS_BASE}/${id}/SKILL.md`;
+  }
 
-export function getSkillBlobUrl(id) {
-  return `${SKILLS_BASE}/${id}/SKILL.md`;
-}
+  export function getSkillBlobUrl(id) {
+    return `${SKILLS_BASE}/${id}/SKILL.md`;
+  }

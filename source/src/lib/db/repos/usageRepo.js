@@ -150,21 +150,22 @@ async function calculateCost(provider, model, tokens) {
 }
 
 export function trackPendingRequest(model, provider, connectionId, started, error = false) {
+  const activeConnectionId = connectionId || "no-auth";
   const modelKey = provider ? `${model} (${provider})` : model;
-  const timerKey = `${connectionId}|${modelKey}`;
+  const timerKey = `${activeConnectionId}|${modelKey}`;
 
   if (!pendingRequests.byModel[modelKey]) pendingRequests.byModel[modelKey] = 0;
   pendingRequests.byModel[modelKey] = Math.max(0, pendingRequests.byModel[modelKey] + (started ? 1 : -1));
   if (pendingRequests.byModel[modelKey] === 0) delete pendingRequests.byModel[modelKey];
 
-  if (connectionId) {
-    if (!pendingRequests.byAccount[connectionId]) pendingRequests.byAccount[connectionId] = {};
-    if (!pendingRequests.byAccount[connectionId][modelKey]) pendingRequests.byAccount[connectionId][modelKey] = 0;
-    pendingRequests.byAccount[connectionId][modelKey] = Math.max(0, pendingRequests.byAccount[connectionId][modelKey] + (started ? 1 : -1));
-    if (pendingRequests.byAccount[connectionId][modelKey] === 0) {
-      delete pendingRequests.byAccount[connectionId][modelKey];
-      if (Object.keys(pendingRequests.byAccount[connectionId]).length === 0) {
-        delete pendingRequests.byAccount[connectionId];
+  if (activeConnectionId) {
+    if (!pendingRequests.byAccount[activeConnectionId]) pendingRequests.byAccount[activeConnectionId] = {};
+    if (!pendingRequests.byAccount[activeConnectionId][modelKey]) pendingRequests.byAccount[activeConnectionId][modelKey] = 0;
+    pendingRequests.byAccount[activeConnectionId][modelKey] = Math.max(0, pendingRequests.byAccount[activeConnectionId][modelKey] + (started ? 1 : -1));
+    if (pendingRequests.byAccount[activeConnectionId][modelKey] === 0) {
+      delete pendingRequests.byAccount[activeConnectionId][modelKey];
+      if (Object.keys(pendingRequests.byAccount[activeConnectionId]).length === 0) {
+        delete pendingRequests.byAccount[activeConnectionId];
       }
     }
   }
@@ -174,8 +175,8 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
     pendingTimers[timerKey] = setTimeout(() => {
       delete pendingTimers[timerKey];
       if (pendingRequests.byModel[modelKey] > 0) pendingRequests.byModel[modelKey] = 0;
-      if (connectionId && pendingRequests.byAccount[connectionId]?.[modelKey] > 0) {
-        pendingRequests.byAccount[connectionId][modelKey] = 0;
+      if (activeConnectionId && pendingRequests.byAccount[activeConnectionId]?.[modelKey] > 0) {
+        pendingRequests.byAccount[activeConnectionId][modelKey] = 0;
       }
       scheduleStatsEvent("pending");
     }, PENDING_TIMEOUT_MS);
@@ -189,7 +190,8 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
     lastErrorProvider.ts = Date.now();
   }
 
-  // [PENDING] console line removed; lifecycle is visible via "▶" and "📊 done" lines
+  const t = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  console.log(`[${t}] [PENDING] ${started ? "START" : "END"}${error ? " (ERROR)" : ""} | provider=${provider} | model=${model}`);
   scheduleStatsEvent("pending");
 }
 
@@ -200,7 +202,7 @@ export async function getActiveRequests() {
   for (const [connectionId, models] of Object.entries(pendingRequests.byAccount)) {
     for (const [modelKey, count] of Object.entries(models)) {
       if (count > 0) {
-        const accountName = connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
+        const accountName = connectionId === "no-auth" ? "Free / No Auth" : (connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`);
         const match = modelKey.match(/^(.*) \((.*)\)$/);
         activeRequests.push({
           model: match ? match[1] : modelKey,

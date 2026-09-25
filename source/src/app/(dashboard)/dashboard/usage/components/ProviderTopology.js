@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
+
+const EMPTY_PROVIDERS = [];
+const EMPTY_REQUESTS = [];
 import {
   ReactFlow,
   Handle,
@@ -17,6 +21,7 @@ import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/prov
 // Force-stop FE animation if a provider stays active longer than this
 const FE_ACTIVE_TIMEOUT_MS = 60000;
 const FE_ACTIVE_TICK_MS = 1000;
+const FIT_VIEW_OPTS = { padding: 0.2, duration: 200 };
 
 // Kame + electric particles along active edges
 const KAME_PARTICLE_COUNT = 6;
@@ -32,7 +37,7 @@ function getProviderImageUrl(providerId) {
 
 // Custom provider node - rectangle with image + name
 function ProviderNode({ data }) {
-  const { label, color, imageUrl, textIcon, active } = data;
+  const { providerId, label, color, imageUrl, textIcon, active } = data;
   const [imgError, setImgError] = useState(false);
   return (
     <div
@@ -53,15 +58,38 @@ function ProviderNode({ data }) {
         className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
         style={{ backgroundColor: `${color}15` }}
       >
-        {imageUrl && !imgError ? (
-          <img
+        {providerId === "a6api" || providerId === "a6api-cli" ? (
+          <span
+            className="a6api-custom-logo"
+            style={{
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              position: "relative",
+              overflow: "hidden",
+              color: "var(--navy, #1F2937)",
+              fontSize: "9px",
+              fontWeight: "bold",
+              letterSpacing: 0,
+              background: "radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .38), transparent 22%), conic-gradient(from 210deg, #3157ff, #16b8a6, #74c86a, #3157ff)",
+              boxShadow: "0 4px 8px #3157ff38",
+              isolation: "isolate",
+            }}
+          >
+            <span>A6</span>
+          </span>
+        ) : imageUrl && !imgError ? (
+          <Image
             src={imageUrl}
             alt={label}
             className="w-6 h-6 rounded-sm object-contain"
-            loading="lazy"
-            decoding="async"
+            width={24}
+            height={24}
+            unoptimized
             onError={() => {
-              const m = imageUrl?.match(/^\/providers\/([^/]+)\.png$/i);
+              const m = imageUrl?.match(/^\/providers\/([^/]+)\.(png|webp)$/i);
               if (m) markProviderIconMissing(m[1]);
               setImgError(true);
             }}
@@ -90,11 +118,8 @@ function ProviderNode({ data }) {
   );
 }
 
-ProviderNode.propTypes = {
-  data: PropTypes.object.isRequired,
-};
 
-// Center 9Router node — pulse/glow on card only (no expanding rings)
+// Center Mayday node — pulse/glow on card only (no expanding rings)
 function RouterNode({ data }) {
   const powering = (data.activeCount || 0) > 0;
   return (
@@ -112,13 +137,15 @@ function RouterNode({ data }) {
 
       <img
         src="/favicon.svg"
-        alt="9Router"
+        alt="VansAI"
         className={`w-6 h-6 mr-2 ${powering ? "topology-router-icon" : ""}`}
         loading="lazy"
         decoding="async"
+        width={24}
+        height={24}
       />
       <span className={`text-sm font-bold ${powering ? "topology-router-label text-yellow-300" : "text-primary"}`}>
-        9Router
+        VansAI
       </span>
       {data.activeCount > 0 && (
         <span className="ml-2 px-1.5 py-0.5 rounded-full bg-yellow-400 text-black text-xs font-bold topology-router-badge">
@@ -129,9 +156,6 @@ function RouterNode({ data }) {
   );
 }
 
-RouterNode.propTypes = {
-  data: PropTypes.object.isRequired,
-};
 
 // Active: electric kame beam (multi-layer stroke + sparks). Idle/last/error: solid BaseEdge.
 function TopologyEdge({
@@ -305,6 +329,7 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
     const error = !active && errorSet.has(p.provider?.toLowerCase());
     const nodeId = `provider-${p.provider}`;
     const data = {
+      providerId: p.provider,
       label: (config.name !== p.provider ? config.name : null) || p.nodeName || p.name || p.provider,
       color: config.color || "#6b7280",
       imageUrl: getProviderImageUrl(p.provider),
@@ -354,10 +379,10 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
   return { nodes, edges };
 }
 
-export default function ProviderTopology({ providers = [], activeRequests = [], lastProvider = "", errorProvider = "" }) {
+export default function ProviderTopology({ providers = EMPTY_PROVIDERS, activeRequests = EMPTY_REQUESTS, lastProvider = "", errorProvider = "" }) {
   // Serialize to stable string keys so useMemo only re-runs when values actually change
   const activeKey = useMemo(
-    () => activeRequests.map((r) => r.provider?.toLowerCase()).filter(Boolean).sort().join(","),
+    () => activeRequests.flatMap((r) => { const p = r.provider?.toLowerCase(); return p ? [p] : []; }).sort().join(","),
     [activeRequests]
   );
   const lastKey = lastProvider?.toLowerCase() || "";
@@ -368,18 +393,26 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   const errorSet = useMemo(() => new Set(errorKey ? [errorKey] : []), [errorKey]);
 
   // Track firstSeen per active provider; drop provider if running too long (BE stuck)
-  const firstSeenRef = useRef({});
+  const [firstSeen, setFirstSeen] = useState({});
+  const [activeSet, setActiveSet] = useState(new Set());
   const [tick, setTick] = useState(0);
 
+  // Tracks when each provider became active so we can drop providers that
+  // are stuck (e.g. backend never marked them done). State (not ref) so
+  // downstream useEffects can react to changes.
   useEffect(() => {
-    const seen = firstSeenRef.current;
     const now = Date.now();
-    for (const p of rawActiveSet) {
-      if (!seen[p]) seen[p] = now;
-    }
-    for (const p of Object.keys(seen)) {
-      if (!rawActiveSet.has(p)) delete seen[p];
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- updater pattern avoids stale state; cascading renders are intentional here.
+    setFirstSeen((prev) => {
+      const next = { ...prev };
+      for (const p of rawActiveSet) {
+        if (!next[p]) next[p] = now;
+      }
+      for (const p of Object.keys(next)) {
+        if (!rawActiveSet.has(p)) delete next[p];
+      }
+      return next;
+    });
   }, [rawActiveSet]);
 
   useEffect(() => {
@@ -388,15 +421,19 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
     return () => clearInterval(id);
   }, [rawActiveSet]);
 
-  const activeSet = useMemo(() => {
+  // Compute filtered activeSet in an effect so Date.now() is not called
+  // during render. tick + firstSeen + rawActiveSet all trigger recompute.
+  useEffect(() => {
+    void tick; // re-run on tick
     const now = Date.now();
     const filtered = new Set();
     for (const p of rawActiveSet) {
-      const ts = firstSeenRef.current[p];
+      const ts = firstSeen[p];
       if (!ts || now - ts < FE_ACTIVE_TIMEOUT_MS) filtered.add(p);
     }
-    return filtered;
-  }, [rawActiveSet, tick]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Date.now() is not allowed during render; computed in effect so render stays pure.
+    setActiveSet(filtered);
+  }, [rawActiveSet, tick, firstSeen]);
 
   const { nodes, edges } = useMemo(
     () => buildLayout(providers, activeSet, lastSet, errorSet),
@@ -411,10 +448,9 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
 
   const rfInstance = useRef(null);
   const containerRef = useRef(null);
-  const fitOpts = { padding: 0.2, duration: 200 };
   const onInit = useCallback((instance) => {
     rfInstance.current = instance;
-    setTimeout(() => instance.fitView(fitOpts), 50);
+    setTimeout(() => instance.fitView(FIT_VIEW_OPTS), 50);
   }, []);
 
   // Re-fit on container resize
@@ -422,7 +458,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      if (rfInstance.current) rfInstance.current.fitView(fitOpts);
+      if (rfInstance.current) rfInstance.current.fitView(FIT_VIEW_OPTS);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -431,7 +467,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   // Re-fit when node count/layout changes
   useEffect(() => {
     if (rfInstance.current) {
-      const id = setTimeout(() => rfInstance.current.fitView(fitOpts), 50);
+      const id = setTimeout(() => rfInstance.current.fitView(FIT_VIEW_OPTS), 50);
       return () => clearTimeout(id);
     }
   }, [nodes.length]);
@@ -450,7 +486,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={fitOpts}
+          fitViewOptions={FIT_VIEW_OPTS}
           minZoom={0.1}
           maxZoom={2}
           onInit={onInit}
@@ -471,17 +507,3 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   );
 }
 
-ProviderTopology.propTypes = {
-  providers: PropTypes.arrayOf(PropTypes.shape({
-    id: PropTypes.string,
-    provider: PropTypes.string,
-    name: PropTypes.string,
-  })),
-  activeRequests: PropTypes.arrayOf(PropTypes.shape({
-    provider: PropTypes.string,
-    model: PropTypes.string,
-    account: PropTypes.string,
-  })),
-  lastProvider: PropTypes.string,
-  errorProvider: PropTypes.string,
-};

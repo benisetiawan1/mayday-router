@@ -5,6 +5,11 @@ import {
   getProxyPoolById,
   updateProxyPool,
 } from "@/models";
+import { requireDashboardAuth } from "@/lib/auth/routeAuth.js";
+
+async function authorized(request) {
+  return requireDashboardAuth(request);
+}
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -38,7 +43,7 @@ function normalizeProxyPoolUpdate(body = {}) {
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "type")) {
-    const validTypes = ["http", "vercel", "cloudflare"];
+    const validTypes = ["http", "vercel", "cloudflare", "deno"];
     updates.type = validTypes.includes(body?.type) ? body.type : "http";
   }
 
@@ -46,11 +51,16 @@ function normalizeProxyPoolUpdate(body = {}) {
 }
 
 function countBoundConnections(connections = [], proxyPoolId) {
-  return connections.filter((connection) => connection?.providerSpecificData?.proxyPoolId === proxyPoolId).length;
+  return connections.filter((connection) => {
+    const data = connection?.providerSpecificData;
+    return data?.proxyPoolId === proxyPoolId
+      || (Array.isArray(data?.proxyPoolIds) && data.proxyPoolIds.includes(proxyPoolId));
+  }).length;
 }
 
 // GET /api/proxy-pools/[id] - Get proxy pool
 export async function GET(request, { params }) {
+  if (!await authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;
     const proxyPool = await getProxyPoolById(id);
@@ -68,6 +78,7 @@ export async function GET(request, { params }) {
 
 // PUT /api/proxy-pools/[id] - Update proxy pool
 export async function PUT(request, { params }) {
+  if (!await authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;
     const existing = await getProxyPoolById(id);
@@ -93,6 +104,7 @@ export async function PUT(request, { params }) {
 
 // DELETE /api/proxy-pools/[id] - Delete proxy pool
 export async function DELETE(request, { params }) {
+  if (!await authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;
     const existing = await getProxyPoolById(id);

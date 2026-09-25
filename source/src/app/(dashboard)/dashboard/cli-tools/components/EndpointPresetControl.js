@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "9router.cliToolEndpointPresets";
+const STORAGE_KEY = "mayday.cliToolEndpointPresets";
 
 function maskApiKey(apiKey) {
   if (!apiKey) return "No API key";
@@ -35,12 +35,8 @@ export default function EndpointPresetControl({
   onBaseUrlChange,
   onApiKeyChange,
 }) {
-  const [presets, setPresets] = useState([]);
+  const [presets, setPresets] = useState(readPresets);
   const [selectedName, setSelectedName] = useState("");
-
-  useEffect(() => {
-    setPresets(readPresets());
-  }, []);
 
   const selectedPreset = useMemo(
     () => presets.find((preset) => preset.name === selectedName) || null,

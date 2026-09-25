@@ -4,15 +4,20 @@ import {
   clearAccountError,
   extractApiKey,
   isValidApiKey,
+  isProviderAllowed,
+  isComboAllowed,
+  isKindAllowed,
+  isTrustedInternalRequest,
 } from "../services/auth.js";
-import { getSettings, getCombos } from "@/lib/localDb";
-import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
-import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { handleComboChat, getComboModelsFromData, stripComboPrefix } from "open-sse/services/combo.js";
+import { getSettings, getCombos } from "@/lib/localDb";
+import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { isModelAllowed } from "../services/allowedModels.js";
+import { handleSearchCore } from "open-sse/handlers/search/index.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -46,13 +51,16 @@ export async function handleSearch(request) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (settings.requireApiKey) {
+  let apiKeyInfo = null;
+  // Trusted internal (dashboard/CLI) requests act as the local owner — bypass ACL.
+  const trustedInternal = await isTrustedInternalRequest(request);
+  if (!trustedInternal && settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
+    apiKeyInfo = await isValidApiKey(apiKey);
+    if (!apiKeyInfo) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
@@ -61,6 +69,11 @@ export async function handleSearch(request) {
   if (!providerInput || typeof providerInput !== "string") {
     log.warn("SEARCH", "Missing provider/model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: provider (or model)");
+  }
+
+  if (!isKindAllowed(apiKeyInfo, "webSearch")) {
+    log.warn("AUTH", "Web search kind not allowed for API key");
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "Web search requests are not allowed for this API key");
   }
 
   if (!query || typeof query !== "string" || !query.trim()) {
@@ -72,25 +85,31 @@ export async function handleSearch(request) {
   const combos = await getCombos();
   const comboModels = getComboModelsFromData(providerInput, combos);
   if (comboModels) {
+    if (!isComboAllowed(apiKeyInfo, providerInput)) {
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `Combo "${providerInput}" is not allowed for this API key`);
+    }
+    const comboNameSearch = stripComboPrefix(providerInput);
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const comboStrategy = comboStrategies[comboNameSearch]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("SEARCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("SEARCH", `Combo "${comboNameSearch}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings, apiKeyInfo),
       log,
-      comboName: providerInput,
+      comboName: comboNameSearch,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      timeoutMs: comboStrategies[comboNameSearch]?.targetTimeoutMs ?? null,
+      queueDepth: comboStrategies[comboNameSearch]?.queueDepth ?? null,
     });
   }
 
-  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings, apiKeyInfo);
 }
 
-async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings, apiKeyInfo = null) {
   const query = body.query;
   const providerId = resolveProviderId(providerInput);
   const resolvedProvider = AI_PROVIDERS[providerId];
@@ -106,6 +125,18 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   if (!supportsSearch) {
     log.warn("SEARCH", "Provider does not support web search", { provider: providerId });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Provider ${providerId} does not support web search`);
+  }
+
+  if (!(await isProviderAllowed(apiKeyInfo, providerId))) {
+    log.warn("AUTH", `Provider "${providerId}" not allowed for API key`, { provider: providerId });
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider "${providerId}" is not allowed for this API key`);
+  }
+
+  const alias = AI_PROVIDERS[providerId]?.alias || providerId;
+  const searchModelId = `${alias}/search`;
+  if (!(await isModelAllowed(searchModelId, apiKeyInfo))) {
+    log.warn("SEARCH", `Search model not in available models list`, { model: searchModelId });
+    return errorResponse(HTTP_STATUS.NOT_FOUND, `Model "${searchModelId}" is not available. Only models listed in /v1/models can be used.`);
   }
 
   if (providerInput !== providerId) {
@@ -126,7 +157,8 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     offset: body.offset,
     domain_filter: body.domain_filter,
     content_options: body.content_options,
-    provider_options: body.provider_options
+    provider_options: body.provider_options,
+    exa_options: body.exa_options || body.exa || body
   };
 
   // No-auth providers (e.g. searxng) bypass credential lookup
@@ -216,7 +248,18 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
 
     if (result.success) return result.response;
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, credentialProviderId, searchLockKey);
+    // Do NOT lock the account or trigger account fallback on 400/422 (client request validation errors)
+    if (result.status === 400 || result.status === 422) {
+      return result.response;
+    }
+
+    const { shouldFallback } = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      credentialProviderId,
+      searchLockKey
+    );
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

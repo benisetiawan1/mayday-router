@@ -2,20 +2,21 @@
 
 import { cn } from "@/shared/utils/cn";
 
+const SPINNER_SIZES = {
+  sm: "size-4",
+  md: "size-6",
+  lg: "size-8",
+  xl: "size-12",
+};
+
 // Spinner loading
 export function Spinner({ size = "md", className }) {
-  const sizes = {
-    sm: "size-4",
-    md: "size-6",
-    lg: "size-8",
-    xl: "size-12",
-  };
 
   return (
     <span
       className={cn(
         "material-symbols-outlined animate-spin text-brand-500",
-        sizes[size],
+        SPINNER_SIZES[size],
         className
       )}
     >

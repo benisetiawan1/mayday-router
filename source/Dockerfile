@@ -14,12 +14,15 @@ RUN npm install --registry=https://registry.npmmirror.com
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# src/package.json {"type":"module"} conflicts with CJS files under src/
+# (coworkPlugins, stdioSseBridge, mitm/*). Run build without it, like the
+# original VansRouter build did.
+RUN rm -f src/package.json && npm run build
 
 FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
-LABEL org.opencontainers.image.title="9router"
+LABEL org.opencontainers.image.title="mayday-router"
 
 ENV NODE_ENV=production
 ENV PORT=20128

@@ -8,6 +8,8 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  /* eslint-disable react-hooks/immutability --
+     loadPricing is declared below the JSX section. */
   useEffect(() => {
     if (isOpen) {
       loadPricing();

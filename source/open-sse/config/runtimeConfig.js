@@ -43,10 +43,7 @@ function envUrl(name, def) {
   const raw = process.env[name]?.trim();
   return raw || def;
 }
-
-// SearXNG endpoint used by the unauthenticated web-search provider.
-// Configure this for a separate Docker service or remote SearXNG instance.
-export const SEARXNG_URL = envUrl("SEARXNG_URL", "http://localhost:8888/search");
+export const SEARXNG_URL = envUrl("SEARXNG_URL", "http://127.0.0.1:8888/search");
 
 // Inter-chunk stall timeout (once tokens are flowing). Generous headroom so
 // slow reasoning models aren't aborted mid-stream. Env: STREAM_STALL_TIMEOUT_MS.
@@ -60,6 +57,12 @@ export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1
 
 // Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
 export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = envMs("GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS", 45 * 1000);
+
+// Combo per-target timeout: abort a combo member that does not return response
+// headers within this duration and fall back to the next member.
+// For streaming this bounds time-to-first-headers only, not token generation.
+// Env: COMBO_TARGET_TIMEOUT_MS.
+export const DEFAULT_COMBO_TARGET_TIMEOUT_MS = envMs("COMBO_TARGET_TIMEOUT_MS", 30 * 1000);
 
 // Default token limits
 export const DEFAULT_MAX_TOKENS = 64000;
@@ -90,6 +93,30 @@ export function resolveRetryEntry(entry) {
     attempts: entry.attempts || 0,
     delayMs: entry.delayMs != null ? entry.delayMs : RETRY_CONFIG.delayMs
   };
+}
+
+/**
+ * Cap retry attempts based on how many accounts the user has configured for a provider.
+ * More accounts → fail faster and fall back to the next account instead of burning time
+ * retrying the same stalled account.
+ *   - >= 5 accounts: max 1 retry attempt per account
+ *   - >= 3 accounts: max 2 retry attempts per account
+ *   - <  3 accounts: keep configured attempts (no cap)
+ */
+export function capRetryAttemptsByAccountCount(retryConfig, accountCount) {
+  if (!accountCount || accountCount < 3) return retryConfig;
+  const maxAttempts = accountCount >= 5 ? 1 : 2;
+  const capped = {};
+  for (const [status, entry] of Object.entries(retryConfig)) {
+    if (entry == null) {
+      capped[status] = entry;
+    } else if (typeof entry === "number") {
+      capped[status] = Math.min(entry, maxAttempts);
+    } else {
+      capped[status] = { ...entry, attempts: Math.min(entry.attempts ?? 0, maxAttempts) };
+    }
+  }
+  return capped;
 }
 
 // Requests containing these texts will bypass provider

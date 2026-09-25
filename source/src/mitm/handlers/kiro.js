@@ -44,7 +44,7 @@ function initKiroState(modelId) {
     usage: null,                   // Accumulated usage from usage-only chunks
     inThink: false,                // Whether inside a <thinking> block
     thinkBuf: "",                  // Buffer for partial thinking content
-    initialSent: false,            // Whether initial-response frame was emitted
+    initialSent: false,
   };
 }
 
@@ -131,7 +131,7 @@ function encodeHeader(name, value) {
  * The SmithyMessageDecoderStream layer requires three system headers on every frame:
  *   :message-type  = "event"             (or "exception" / "error")
  *   :event-type    = e.g. "assistantResponseEvent"
- *   :content-type  = "application/json"  (initial-response uses x-amz-json-1.0)
+ *   :content-type  = "application/json"
  */
 function buildEventStreamFrame(eventType, payload, contentType = "application/json") {
   const payloadBuf = Buffer.from(
@@ -160,38 +160,21 @@ function buildEventStreamFrame(eventType, payload, contentType = "application/js
   return frame;
 }
 
-/** Real Kiro Runtime always starts the stream with this frame (capture of IDE 1.0.228). */
-function buildInitialResponseFrame(conversationId = "") {
-  return buildEventStreamFrame(
-    "initial-response",
-    { conversationId: conversationId || "" },
-    "application/x-amz-json-1.0"
-  );
-}
-
-/** Prepend initial-response once per stream so Smithy decoder is happy. */
 function withInitialFrame(state, frames) {
   const list = frames == null ? [] : Array.isArray(frames) ? frames : [frames];
   if (state.initialSent) return list.length === 0 ? null : list.length === 1 ? list[0] : list;
   state.initialSent = true;
-  const out = [buildInitialResponseFrame(""), ...list];
+  const initial = buildEventStreamFrame("initial-response", { conversationId: "" }, "application/x-amz-json-1.0");
+  const out = [initial, ...list];
   return out.length === 1 ? out[0] : out;
 }
 
 // ─── CodeWhisperer → OpenAI conversion ───────────────────────────────────────
 
-const INLINE_IMAGE_MIME_BY_FORMAT = new Map([
-  ["png", "image/png"],
-  ["jpeg", "image/jpeg"],
-  ["jpg", "image/jpeg"],
-  ["gif", "image/gif"],
-  ["webp", "image/webp"],
-]);
-
 /**
  * Safely stringify a tool-call input value.
  * OpenAI expects `function.arguments` to be a JSON string, never an object.
- * If 9router's Anthropic→OpenAI conversion passes the input as a pre-parsed object,
+ * If mayday's Anthropic→OpenAI conversion passes the input as a pre-parsed object,
  * this prevents the "" + object → "[object Object]" corruption.
  */
 function safeArgsString(value) {
@@ -222,32 +205,9 @@ function convertUserInputMessage(uim) {
     });
   }
 
-  const images = Array.isArray(uim.images) ? uim.images : [];
-  const imageParts = images
-    .filter(image => image !== null
-      && typeof image === "object"
-      && !Array.isArray(image)
-      && image.source !== null
-      && typeof image.source === "object"
-      && !Array.isArray(image.source)
-      && INLINE_IMAGE_MIME_BY_FORMAT.has(image.format)
-      && typeof image.source.bytes === "string"
-      && image.source.bytes.length > 0)
-    .map(image => ({
-      type: "image_url",
-      image_url: {
-        url: `data:${INLINE_IMAGE_MIME_BY_FORMAT.get(image.format)};base64,${image.source.bytes}`,
-      },
-    }));
-
   // Emit user text only if it exists alongside OR when there are no tool results
   const text = (uim.content || "").trim();
-  if (imageParts.length > 0) {
-    const content = [];
-    if (text) content.push({ type: "text", text });
-    content.push(...imageParts);
-    out.push({ role: "user", content });
-  } else if (text || toolResults.length === 0) {
+  if (text || toolResults.length === 0) {
     out.push({ role: "user", content: text });
   }
 
@@ -399,24 +359,26 @@ function convertOpenAIToKiro(chunk, state) {
     state.hasToolCalls = true;
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
+      const tcFnName = tc.function?.name;
+      const tcFnArgs = tc.function?.arguments;
 
-      if (tc.id && tc.function?.name && !state.toolCallInit[idx]) {
+      if (tc.id && tcFnName && !state.toolCallInit[idx]) {
         // First appearance: emit frame with name + id, no input
-        state.toolCallInit[idx] = { id: tc.id, name: tc.function.name };
-        dbg(`toolUseEvent init: ${tc.function.name} (${tc.id})`);
+        state.toolCallInit[idx] = { id: tc.id, name: tcFnName };
+        dbg(`toolUseEvent init: ${tcFnName} (${tc.id})`);
         frames.push(buildEventStreamFrame("toolUseEvent", {
-          name: tc.function.name,
+          name: tcFnName,
           toolUseId: tc.id
         }));
       }
 
       // Emit incremental input fragment
-      if (tc.function?.arguments) {
+      if (tcFnArgs) {
         const init = state.toolCallInit[idx];
-        dbg(`toolUseEvent fragment: ${tc.function.arguments.slice(0, 100)}`);
+        dbg(`toolUseEvent fragment: ${tcFnArgs.slice(0, 100)}`);
         frames.push(buildEventStreamFrame("toolUseEvent", {
-          input: tc.function.arguments,
-          name: init?.name || tc.function?.name || "",
+          input: tcFnArgs,
+          name: init?.name || tcFnName || "",
           toolUseId: init?.id || tc.id || ""
         }));
       }
@@ -458,11 +420,7 @@ function convertOpenAIToKiro(chunk, state) {
     }
   }
 
-  if (frames.length === 0) {
-    // اولین چانک ممکنه فقط role/empty باشه — initial رو همون‌جا بفرست
-    if (!state.initialSent) return withInitialFrame(state, null);
-    return null;
-  }
+  if (frames.length === 0) return withInitialFrame(state, null);
   return withInitialFrame(state, frames.length === 1 ? frames[0] : frames);
 }
 
@@ -506,7 +464,7 @@ function emitFinish(state) {
  * Intercept Kiro IDE CodeWhisperer request and convert to EventStream response:
  *   1. Parse CodeWhisperer JSON body (reject binary EventStream formats)
  *   2. Convert CodeWhisperer format to OpenAI messages[] format
- *   3. Forward to 9router /v1/chat/completions (OpenAI SSE)
+ *   3. Forward to mayday /v1/chat/completions (OpenAI SSE)
  *   4. Convert OpenAI SSE response → AWS EventStream binary frames
  *   5. Stream EventStream frames back to Kiro IDE
  * 
@@ -542,7 +500,7 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       ...(tools.length > 0 && { tools, tool_choice: "auto" }),
     };
 
-    // 3: Forward to 9router
+    // 3: Forward to mayday
     const routerRes = await fetchRouter(openaiBody, "/v1/chat/completions", req.headers);
 
     // 4 + 5: Re-encode response as AWS EventStream binary using standard pipeline

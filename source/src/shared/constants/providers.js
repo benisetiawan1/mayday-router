@@ -1,12 +1,12 @@
 // Provider definitions
 import REGISTRY from "open-sse/providers/registry/index.js";
-import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
+import { resolveProviderDisplay } from "./providersDisplay.js";
 
 const MEDIA_ENTRY_KEYS = [
   "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
   "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
-  "searchViaChat", "searchConfig", "fetchConfig", "credentialFallback",
-  "modelsFetcher", "mediaPriority", "hiddenKinds",
+  "searchViaChat", "searchConfig", "fetchConfig",
+  "modelsFetcher", "mediaPriority", "hiddenKinds", "credentialFallback",
 ];
 
 // Build provider UI object from registry entry
@@ -16,12 +16,12 @@ function buildProviderEntry(r) {
   for (const k of MEDIA_ENTRY_KEYS) {
     if (r[k] !== undefined) mediaFields[k] = r[k];
   }
-  const display = { ...(r.display || {}) };
-  if (display.deprecationNotice === "RISK_NOTICE") display.deprecationNotice = RISK_NOTICE;
+  const display = resolveProviderDisplay(r.display || {});
   return {
     ...display,
     id: r.id,
     alias: r.uiAlias || r.alias,
+    ...(r.aliases ? { aliases: r.aliases } : {}),
     ...(r.hidden ? { hidden: true } : {}),
     ...mediaFields,
     ...(r.priority !== undefined ? { priority: r.priority } : {}),
@@ -110,7 +110,7 @@ export const AUTH_METHODS = {
 // Helper: Get provider by alias
 export function getProviderByAlias(alias) {
   for (const provider of Object.values(AI_PROVIDERS)) {
-    if (provider.alias === alias || provider.id === alias) {
+    if (provider.alias === alias || provider.id === alias || provider.aliases?.includes(alias)) {
       return provider;
     }
   }
@@ -132,6 +132,7 @@ export function getProviderAlias(providerId) {
 // Alias to ID mapping (for quick lookup)
 export const ALIAS_TO_ID = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   acc[p.alias] = p.id;
+  for (const alias of p.aliases || []) acc[alias] = p.id;
   return acc;
 }, {});
 
@@ -163,3 +164,16 @@ export const USAGE_SUPPORTED_PROVIDERS = REGISTRY
 export const USAGE_APIKEY_PROVIDERS = REGISTRY
   .filter(r => r.features?.usageApikey)
   .map(r => r.id);
+
+// Canonical, always-complete provider list for API-key ACL pickers.
+// Derived from AI_PROVIDERS — excludes hidden (media-only) providers.
+export function getAclProviderList() {
+  const byAlias = new Map();
+  for (const p of Object.values(AI_PROVIDERS)) {
+    if (!p?.alias || p.hidden) continue;
+    if (!byAlias.has(p.alias)) {
+      byAlias.set(p.alias, { alias: p.alias, name: p.name || p.alias, color: p.color || "#6B7280" });
+    }
+  }
+  return Array.from(byAlias.values()).sort((a, b) => a.name.localeCompare(b.name));
+}

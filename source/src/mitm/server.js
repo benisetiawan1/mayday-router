@@ -7,9 +7,9 @@ const dns = require("dns");
 const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
-const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest, extractModel } = require("./config");
+const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest } = require("./config");
 const { DATA_DIR, MITM_DIR } = require("./paths");
-const { generateCert, getCertForDomain } = require("./cert/generate");
+const { getCertForDomain } = require("./cert/generate");
 const { getMitmAlias } = require("./dbReader");
 const { applyAntigravityIdeVersionOverride } = require("./antigravityIdeVersion");
 const LOCAL_PORT = 443;
@@ -57,11 +57,6 @@ function sniCallback(servername, cb) {
 
 let sslOptions;
 try {
-  if (!fs.existsSync(path.join(MITM_DIR, "rootCA.key")) || !fs.existsSync(path.join(MITM_DIR, "rootCA.crt"))) {
-    log("Root CA missing, generating...");
-    generateCert();
-  }
-
   const rootKey = fs.readFileSync(path.join(MITM_DIR, "rootCA.key"));
   const rootCert = fs.readFileSync(path.join(MITM_DIR, "rootCA.crt"));
   rootCAPem = rootCert.toString("utf8");
@@ -94,6 +89,42 @@ function collectBodyRaw(req) {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+// Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState
+function extractModel(url, body) {
+  const urlMatch = url.match(/\/models\/([^/:]+)/);
+  if (urlMatch) return urlMatch[1];
+  
+  // Skip parsing if body is binary (AWS EventStream, Protocol Buffers, etc.)
+  if (isBinaryData(body)) return null;
+  
+  try {
+    const parsed = JSON.parse(body.toString());
+    if (parsed.conversationState) {
+      return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
+    }
+    return parsed.model || null;
+  } catch { return null; }
+}
+
+// Detect binary data vs JSON text
+function isBinaryData(buffer) {
+  if (!buffer || buffer.length === 0) return false;
+  // AWS EventStream signature: first 4 bytes = frame length (big-endian uint32)
+  // Check for non-printable chars in first 100 bytes (common in binary protocols)
+  const sample = buffer.slice(0, Math.min(100, buffer.length));
+  let nonPrintable = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const byte = sample[i];
+    // Count non-ASCII printable chars (excluding whitespace)
+    if (byte < 0x20 && byte !== 0x09 && byte !== 0x0A && byte !== 0x0D) {
+      nonPrintable++;
+    }
+    if (byte > 0x7E) nonPrintable++;
+  }
+  // If >30% non-printable, treat as binary
+  return (nonPrintable / sample.length) > 0.3;
 }
 
 function getMappedModel(tool, model) {
@@ -132,7 +163,7 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
 
   const tool = getToolForHost(req.headers.host);
   const versionOverride = tool === "antigravity"
-    ? applyAntigravityIdeVersionOverride(bodyBuffer, req.headers, req.url)
+    ? applyAntigravityIdeVersionOverride(bodyBuffer, req.headers)
     : { bodyBuffer, headers: req.headers };
   const bodyForForwarding = versionOverride.bodyBuffer;
   const headersForForwarding = { ...versionOverride.headers, host: targetHost };
@@ -303,7 +334,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
     const bodyBuffer = await collectBodyRaw(req);
     if (ENABLE_FILE_LOG) dumpRequest(req, bodyBuffer, "raw");
 
-    // Anti-loop: skip requests from 9Router
+    // Anti-loop: skip requests from Mayday
     if (req.headers[INTERNAL_REQUEST_HEADER.name] === INTERNAL_REQUEST_HEADER.value) {
       return passthrough(req, res, bodyBuffer);
     }
@@ -311,7 +342,6 @@ const server = https.createServer(sslOptions, async (req, res) => {
     const tool = getToolForHost(req.headers.host);
     if (!tool) return passthrough(req, res, bodyBuffer);
 
-    // Kiro IDE posts chat to `/` with x-amz-target (not path /generateAssistantResponse)
     if (!isChatRequest(tool, req)) return passthrough(req, res, bodyBuffer);
 
     // Cursor uses binary proto — model extraction not possible at this layer.

@@ -51,21 +51,8 @@ async function huggingface({ baseUrl, apiKey, text, modelId }) {
   return responseToBase64(res, "wav");
 }
 
-// Fish Audio: model travels in an HTTP header, the voice is a reference_id, returns binary
 async function fishAudio({ baseUrl, apiKey, text, modelId, voiceId }) {
-  const res = await fetch(baseUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-      "model": modelId || "s2.1-pro-free",
-    },
-    body: JSON.stringify({
-      text,
-      format: "mp3",
-      ...(voiceId ? { reference_id: voiceId } : {}),
-    }),
-  });
+  const res = await fetch(baseUrl, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, model: modelId || "s2.1-pro-free" }, body: JSON.stringify({ text, format: "mp3", ...(voiceId ? { reference_id: voiceId } : {}) }) });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "mp3");
 }

@@ -10,7 +10,7 @@ const providerRuleFor = (provider) => PROVIDERS[provider]?.reasoningInject;
 
 // Model-level rules: matched by predicate against model id
 const MODEL_RULES = [
-  { match: m => /^kimi-/i.test(m || ""), scope: "toolCalls" },
+  { match: m => /(?:^|\/)kimi-/i.test(m || ""), scope: "toolCalls" },
   { match: m => /deepseek/i.test(m || ""), scope: "all" }
 ];
 
@@ -68,6 +68,10 @@ function applyDeepSeekV4ProAlias({ provider, model, body }) {
 }
 
 export function injectReasoningContent({ provider, model, body }) {
+  // If the client/provider explicitly disabled thinking, skip reasoning_content
+  // placeholder injection — the model should not produce reasoning output.
+  if (body?.thinking?.type === "disabled") return body;
+
   const providerRule = providerRuleFor(provider);
   const modelRule = MODEL_RULES.find(r => r.match(model));
   const rule = providerRule || modelRule;

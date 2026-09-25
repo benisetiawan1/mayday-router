@@ -98,7 +98,7 @@ export async function getDeepseekUsage(apiKey = null, proxyOptions = null) {
         total,
         remainingPercentage: total > 0 ? 100 : 0,
         resetAt: null,
-        unlimited: total > 0,
+        unlimited: false,
       };
     }
 

@@ -66,9 +66,11 @@ export async function GET() {
       const name = isCompatible
         ? (c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
         : c.name;
+      const providerDef = AI_PROVIDERS[c.provider];
       return {
         ...c,
         name,
+        alias: providerDef?.alias || null,
         apiKey: undefined,
         accessToken: undefined,
         refreshToken: undefined,
@@ -76,7 +78,25 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ connections: safeConnections });
+    // Build alias → provider ID map for frontend ACL resolution
+    const aliasMap = {};
+    for (const [id, def] of Object.entries(AI_PROVIDERS)) {
+      if (def.alias && def.alias !== id) aliasMap[def.alias] = id;
+      for (const alias of def.aliases || []) aliasMap[alias] = id;
+    }
+
+    // Include all registered providers (not just those with connections) so
+    // the ACL dialog can show free/noAuth providers even when no connection exists.
+    const providers = Object.entries(AI_PROVIDERS).map(([id, def]) => ({
+      id,
+      alias: def.alias || null,
+      aliases: def.aliases || [],
+      displayName: def.display?.name || id,
+      noAuth: !!def.noAuth,
+      serviceKinds: def.serviceKinds || [],
+    }));
+
+    return NextResponse.json({ connections: safeConnections, aliasMap, providers });
   } catch (error) {
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
@@ -126,14 +146,15 @@ export async function POST(request) {
 
     let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
 
-    // Compatible LLM nodes support multiple API-key connections (key pool); runtime
-    // rotates/fails over via getProviderCredentials. Embedding nodes stay single-connection.
+    // Compatible/embedding nodes: allow multiple connections per node for
+    // round-robin/sticky routing across accounts (multi-key load balancing).
     if (isOpenAICompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
       if (!node) {
         return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
       }
       providerSpecificData = {
+        ...(providerSpecificData || {}),
         prefix: node.prefix,
         apiType: node.apiType,
         baseUrl: node.baseUrl,
@@ -145,6 +166,7 @@ export async function POST(request) {
         return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
       }
       providerSpecificData = {
+        ...(providerSpecificData || {}),
         prefix: node.prefix,
         baseUrl: node.baseUrl,
         nodeName: node.name,
@@ -155,6 +177,7 @@ export async function POST(request) {
         return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
       }
       providerSpecificData = {
+        ...(providerSpecificData || {}),
         prefix: node.prefix,
         baseUrl: node.baseUrl,
         nodeName: node.name,
