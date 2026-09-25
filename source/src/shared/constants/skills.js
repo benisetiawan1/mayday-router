@@ -55,20 +55,27 @@ export const SKILLS = [
     icon: "scatter_plot",
   },
   {
-    id: "mayday-web-search",
-    name: "Web Search",
-    description: "Tavily / Exa / Brave / Serper / SearXNG / Google PSE / You.com.",
-    endpoint: "/v1/search",
-    icon: "search",
-  },
-  {
-    id: "mayday-web-fetch",
-    name: "Web Fetch",
-    description: "URL → markdown / text / HTML via Firecrawl, Jina, Tavily, Exa.",
-    endpoint: "/v1/web/fetch",
-    icon: "language",
-  },
-];
+      id: "mayday-web-search",
+      name: "Web Search",
+      description: "Tavily / Exa / Brave / Serper / SearXNG / Google PSE / You.com.",
+      endpoint: "/v1/search",
+      icon: "search",
+    },
+    {
+      id: "mayday-video",
+      name: "Video Generation",
+      description: "Video via xAI Grok Imagine.",
+      endpoint: "/v1/video/generations",
+      icon: "movie",
+    },
+    {
+      id: "mayday-web-fetch",
+      name: "Web Fetch",
+      description: "URL → markdown / text / HTML via Firecrawl, Jina, Tavily, Exa.",
+      endpoint: "/v1/web/fetch",
+      icon: "language",
+    },
+  ];
 
 export function getSkillRawUrl(id) {
   return `${SKILLS_BASE}/${id}/SKILL.md`;
