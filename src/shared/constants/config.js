@@ -10,7 +10,7 @@ export const APP_CONFIG = {
 // GitHub configuration
 export const GITHUB_CONFIG = {
   repo: "benisetiawan1/mayday-router",
-  changelogUrl: "https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/README.md",
+  changelogUrl: "https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/CHANGELOG.md",
   donateUrl: "",
 };
 
