@@ -1,25 +1,30 @@
 import https from "https";
 import pkg from "../../../../package.json" with { type: "json" };
 
-// Keep aligned with the published package. Do not revert to legacy `mayday`: it reports obsolete versions.
-const NPM_PACKAGE_NAME = "mayday";
-const VERSION_CACHE_TTL_MS = 300000; // cache npm latest lookup for 5m
+// Mayday self-hosted update channel — check latest release from OWN GitHub repo,
+// NOT from npm registry or upstream 9router/VansRouter.
+const GITHUB_REPO = "benisetiawan1/mayday-router";
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || ""; // wajib untuk repo private; kosong utk public
+const VERSION_CACHE_TTL_MS = 300000; // cache latest lookup for 5m
 
 // Survive hot reload; one cache per process
-const versionCache = (global.__npmVersionCache ??= { value: null, fetchedAt: 0 });
+const versionCache = (global.__githubVersionCache ??= { value: null, fetchedAt: 0 });
 
-// Fetch latest version from npm registry
+// Fetch latest release tag from GitHub API
 function fetchLatestVersion() {
   return new Promise((resolve) => {
+    const headers = { "User-Agent": "mayday-router", Accept: "application/vnd.github+json" };
+    if (GITHUB_TOKEN) headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
     const req = https.get(
-      `https://registry.npmjs.org/${NPM_PACKAGE_NAME}/latest`,
-      { timeout: 4000 },
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+      { timeout: 4000, headers },
       (res) => {
         let data = "";
         res.on("data", (chunk) => (data += chunk));
         res.on("end", () => {
           try {
-            resolve(JSON.parse(data).version || null);
+            const tag = JSON.parse(data).tag_name;
+            resolve(tag ? String(tag).replace(/^v/i, "") : null);
           } catch {
             resolve(null);
           }
