@@ -1,6 +1,6 @@
 {
   "name": "mayday-app",
-  "version": "0.27.0-beta",
+  "version": "0.28.0-beta",
   "description": "Mayday web dashboard",
   "private": true,
   "engines": {

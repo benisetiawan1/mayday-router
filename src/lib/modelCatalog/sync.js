@@ -6,7 +6,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { CATALOG_FILE, CATALOG_RAW_FILE, invalidateCatalog, installCatalogSource } from "open-sse/providers/catalogOverride.js";
+import { CATALOG_FILE, CATALOG_RAW_FILE, CATALOG_VERSION, invalidateCatalog, installCatalogSource } from "open-sse/providers/catalogOverride.js";
 
 const CATALOG_URL = "https://models.dev/api.json";
 const FETCH_TIMEOUT_MS = 60000;
@@ -40,7 +40,7 @@ const PROVIDER_ALIASES = {
   "cloudflare-ai": "cloudflare-workers-ai",
 };
 
-let state = { running: false, lastSync: null, lastError: null, lastResult: null, etag: null };
+let state = { running: false, lastSync: null, lastError: null, lastResult: null, etag: null, fileVersion: null };
 let timer = null;
 
 export function getSyncState() {
@@ -83,6 +83,17 @@ function build(catalog, entries) {
   // modalities.
   const byProvider = {};
   const tally = {};
+  // Upstream provider id -> the local ids it belongs to (registry snapshot),
+  // so modalities filed per gateway are reachable under the local id requests
+  // arrive with. One upstream name can back more than one local id (glm-cn and
+  // zhipu are both zhipuai).
+  const localIds = new Map();
+  for (const { provider } of entries) {
+    const upstreamId = PROVIDER_ALIASES[provider] || provider;
+    let locals = localIds.get(upstreamId);
+    if (!locals) localIds.set(upstreamId, (locals = []));
+    if (!locals.includes(provider)) locals.push(provider);
+  }
   for (const [providerId, provider] of Object.entries(catalog)) {
     const models = {};
     const counted = new Set();
@@ -103,15 +114,26 @@ function build(catalog, entries) {
     byProvider[providerId] = models;
   }
 
-  // Modalities belong to the model — every gateway serving it has the same
-  // weights — so they are keyed by model id and shared across providers.
+  // Modalities are recorded per gateway upstream, and gateways disagree about
+  // the same weights, so the reader keys them by provider + model. A majority
+  // of gateways still has to declare a modality for it to count (one reseller
+  // mislabelling a text model must not win). Filed under every local id the
+  // provider resolves to, and under the upstream id too: a custom provider node
+  // can carry the upstream name without appearing in the registry snapshot.
   const models = {};
-  for (const [id, counts] of Object.entries(tally)) {
-    const declared = {};
-    for (const key of Object.values(MODALITY_BY_INPUT)) {
-      if ((counts[key] || 0) / counts.total >= MIN_SHARE) declared[key] = true;
+  for (const [providerId, modelsById] of Object.entries(byProvider)) {
+    const locals = localIds.get(providerId) || [providerId];
+    for (const id of Object.keys(modelsById)) {
+      const counts = tally[id];
+      if (!counts) continue;
+      const declared = {};
+      for (const key of Object.values(MODALITY_BY_INPUT)) {
+        if ((counts[key] || 0) / counts.total >= MIN_SHARE) declared[key] = true;
+      }
+      if (!Object.keys(declared).length) continue;
+      for (const local of locals) models[`${local}:${id}`] = declared;
+      if (!locals.includes(providerId)) models[`${providerId}:${id}`] = declared;
     }
-    if (Object.keys(declared).length) models[id] = declared;
   }
 
   // Limits belong to the gateway — each truncates differently — so only the
@@ -172,7 +194,7 @@ export async function syncModelCatalog() {
   state.running = true;
   try {
     const headers = { accept: "application/json" };
-    if (state.etag) headers["if-none-match"] = state.etag;
+    if (state.etag && state.fileVersion === CATALOG_VERSION) headers["if-none-match"] = state.etag;
     const response = await fetch(CATALOG_URL, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
     let result;
@@ -187,12 +209,13 @@ export async function syncModelCatalog() {
       const etag = response.headers.get("etag") || null;
       const entries = await collectEntries();
       const { models, providers } = build(catalog, entries);
-      const serialized = JSON.stringify({ v: 1, etag, syncedAt: Date.now(), models, providers });
+      const serialized = JSON.stringify({ v: CATALOG_VERSION, etag, syncedAt: Date.now(), models, providers });
 
       writeAtomic(CATALOG_FILE, serialized);
       writeAtomic(CATALOG_RAW_FILE, JSON.stringify(slim(catalog)));
 
       state.etag = etag;
+      state.fileVersion = CATALOG_VERSION;
       invalidateCatalog();
       result = {
         status: "updated",
@@ -223,10 +246,13 @@ export async function syncModelCatalog() {
 // of re-downloading 4.3MB to be told nothing changed.
 function restoreEtag() {
   try {
-    state.etag = JSON.parse(fs.readFileSync(CATALOG_FILE, "utf8")).etag || null;
+    const parsed = JSON.parse(fs.readFileSync(CATALOG_FILE, "utf8"));
+    state.etag = parsed.etag || null;
+    state.fileVersion = parsed.v || null;
     state.lastSync = fs.statSync(CATALOG_FILE).mtimeMs;
   } catch {
     state.etag = null;
+    state.fileVersion = null;
   }
 }
 

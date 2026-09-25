@@ -50,3 +50,14 @@
 - PORT: dashboard/combos/page.js (692 baris diff — halaman baru full).
 - SYNC: dashboard/media-providers/combo (termasuk [id]).
 - Tampilan combo kini sejajar 9router.
+
+## 0.28.0-beta (2026-09-25)
+
+### Combo Vision / Capacity Adapter (port 9router v0.5.86)
+- BARU open-sse/services/capacityAdapter.js: pool fallback per-modalitas (vision/pdf/audio/video); combo/solo model non-vision otomatis pindah ke model vision.
+- Wiring chat.js: detectRequiredCapabilities + augmentModelsWithCapacityAdapter + withCapacityAdapterStripping (ACL milik target dipertahankan).
+- settingsRepo: default capacityAdapter vision/audioInput enabled + migrasi legacy mimo.
+- capabilities.js: branch commandcode/cmc default vision:true + COMMANDCODE_TEXT_ONLY.
+- catalogOverride: getCatalogModalities provider-scoped + globalThis.__9rCatalogSource + CATALOG_VERSION=2.
+- modelCatalog/sync.js: writer pairing key `${local}:${id}` (wajib utk reader baru).
+- BARU kimchiModels.js (dormant).
