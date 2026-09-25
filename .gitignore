@@ -39,3 +39,5 @@ yarn-error.log*
 # Scratch
 graphify-out
 check-update
+# Internal tooling — tidak di-sync ke GitHub (pakai copy lokal)
+scripts/
