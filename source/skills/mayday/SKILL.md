@@ -46,13 +46,13 @@ When the user needs a specific capability, fetch that skill's `SKILL.md` from it
 
 | Capability | Raw URL |
 |---|---|
-| Chat / code-gen | https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday-chat/SKILL.md |
-| Image generation | https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday-image/SKILL.md |
-| Text-to-speech | https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday-tts/SKILL.md |
-| Speech-to-text | https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday-stt/SKILL.md |
-| Embeddings | https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday-embeddings/SKILL.md |
-| Web search | https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday-web-search/SKILL.md |
-| Web fetch (URL → markdown) | https://raw.githubusercontent.com/benisetiawan1/mayday-router/refs/heads/main/skills/mayday-web-fetch/SKILL.md |
+| Chat / code-gen | ../mayday-chat/SKILL.md |
+| Image generation | ../mayday-image/SKILL.md |
+| Text-to-speech | ../mayday-tts/SKILL.md |
+| Speech-to-text | ../mayday-stt/SKILL.md |
+| Embeddings | ../mayday-embeddings/SKILL.md |
+| Web search | ../mayday-web-search/SKILL.md |
+| Web fetch (URL → markdown) | ../mayday-web-fetch/SKILL.md |
 
 ## Errors
 

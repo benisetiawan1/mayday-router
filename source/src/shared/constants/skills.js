@@ -1,13 +1,14 @@
 // Agent Skills metadata — single source of truth for /dashboard/skills page.
-// Each skill = 1 raw GitHub URL the user copies and pastes to any AI agent.
+// Each skill = 1 URL the user copies and pastes to any AI agent.
+// Skills are SELF-HOSTED: SKILL.md files live in the image at /public/skills/*
+// and are served from the same origin as the dashboard (private repo OK).
 
-const REPO = "benisetiawan1/mayday-router";
-const BRANCH = "main";
 const SKILL_PATH = "skills";
 
-export const SKILLS_REPO_URL = `https://github.com/${REPO}`;
-const SKILLS_RAW_BASE = `https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/${SKILL_PATH}`;
-const SKILLS_BLOB_BASE = `https://github.com/${REPO}/blob/${BRANCH}/${SKILL_PATH}`;
+export const SKILLS_REPO_URL = `https://github.com/benisetiawan1/mayday-router`;
+const SKILLS_BASE = typeof window !== "undefined"
+  ? `${window.location.origin}/${SKILL_PATH}`
+  : `/skills`;
 
 export const SKILLS = [
   {
@@ -70,9 +71,9 @@ export const SKILLS = [
 ];
 
 export function getSkillRawUrl(id) {
-  return `${SKILLS_RAW_BASE}/${id}/SKILL.md`;
+  return `${SKILLS_BASE}/${id}/SKILL.md`;
 }
 
 export function getSkillBlobUrl(id) {
-  return `${SKILLS_BLOB_BASE}/${id}/SKILL.md`;
+  return `${SKILLS_BASE}/${id}/SKILL.md`;
 }

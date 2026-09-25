@@ -28,6 +28,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATA_DIR=/app/data
 
 COPY --from=builder /app/public ./public
+# Mayday: serve SKILL.md files publicly at /skills/* (dashboard Skills page)
+# so links work even though the source repo is private.
+COPY --from=builder /app/skills ./public/skills
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/custom-server.js ./custom-server.js
