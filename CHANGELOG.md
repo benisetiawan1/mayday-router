@@ -35,3 +35,10 @@
 - Popup update tidak lagi menyarankan "npm i -g mayday" di mode Docker.
 - Install command diganti: bash scripts/deploy-mayday-router.sh (git pull -> docker build -> backup DB -> swap).
 - Endpoint /api/version/shutdown dikunci (409) di mode Docker agar tidak membunuh proses container secara sembrono.
+
+## 0.26.0-beta (2026-09-25)
+
+### Combo update (port dari 9router v0.5.86)
+- combo.js: audio/video input handling + MIME-based capability detection.
+- combosRepo.js, ComboFormModal.js: sinkron upstream.
+- Baru: src/lib/comboPresets.js (preset Cursor/Claude) + route /api/combos/presets.

@@ -4,15 +4,8 @@
 
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
-import { DEFAULT_COMBO_TARGET_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
-
-// Strip "combo/" prefix from model string (e.g. "combo/coding-stack" → "coding-stack")
-export function stripComboPrefix(modelStr) {
-  if (typeof modelStr !== "string") return modelStr;
-  return modelStr.startsWith("combo/") ? modelStr.slice(6) : modelStr;
-}
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -82,10 +75,8 @@ export function reorderByCapabilities(models, required) {
   };
 
   // Stable sort by tier (Array.prototype.sort is stable in modern engines).
-  const tiered = models.map((m, i) => ({ m, i, t: tierOf(m) }));
-  // If no model matches any hard capability, return original reference (no reorder needed).
-  if (tiered.every((x) => x.t === 2)) return models;
-  return tiered
+  return models
+    .map((m, i) => ({ m, i, t: tierOf(m) }))
     .sort((a, b) => a.t - b.t || a.i - b.i)
     .map((x) => x.m);
 }
@@ -115,53 +106,79 @@ export function detectRequiredCapabilities(body) {
   const required = new Set();
   if (!body || typeof body !== "object") return required;
 
+  const addByMime = (mime) => {
+    if (typeof mime !== "string") return;
+    if (mime.startsWith("image/")) required.add("vision");
+    else if (mime === "application/pdf") required.add("pdf");
+    else if (mime.startsWith("audio/")) required.add("audioInput");
+    else if (mime.startsWith("video/")) required.add("videoInput");
+  };
+
   const scanBlock = (b) => {
     if (!b || typeof b !== "object") return;
     const t = b.type;
     if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
-    if (t === "file" || t === "document" || t === "input_file") required.add("pdf");
+    if (t === "input_audio" || t === "audio_url" || t === "audio") required.add("audioInput");
+    if (t === "input_video" || t === "video_url" || t === "video") required.add("videoInput");
+    if (t === "file" || t === "document" || t === "input_file") {
+      // Infer modality from embedded mime when available; fall back to pdf for generic files.
+      let fmime = null;
+      if (b.input_audio?.format) fmime = `audio/${b.input_audio.format}`;
+      else if (b.file?.file_data) fmime = String(b.file.file_data).match(/^data:([^;,]+)/)?.[1];
+      else if (b.source?.media_type) fmime = b.source.media_type;
+      else if (b.source?.data) fmime = String(b.source.data).match(/^data:([^;,]+)/)?.[1];
+      if (fmime) addByMime(fmime);
+      else required.add("pdf");
+    }
     // gemini parts: inlineData/fileData carry a mime
-    const mime = b.inlineData?.mimeType || b.fileData?.mimeType;
-    if (typeof mime === "string" && mime.startsWith("image/")) required.add("vision");
-    if (mime === "application/pdf") required.add("pdf");
+    addByMime(b.inlineData?.mimeType || b.fileData?.mimeType);
   };
 
   const scanContent = (content) => {
     if (Array.isArray(content)) for (const b of content) scanBlock(b);
   };
+
   const scanMessage = (m) => {
     if (!m || typeof m !== "object") return;
-    if (Array.isArray(m.images) && m.images.length) required.add("vision");
-    const attachments = m.experimental_attachments || m.attachments;
-    if (Array.isArray(attachments)) for (const a of attachments) {
-      const mime = a?.contentType || a?.mediaType || (typeof a?.url === "string" ? a.url.match(/^data:([^;,]+)/)?.[1] : null);
-      if (mime?.startsWith("image/")) required.add("vision");
-      else if (mime?.startsWith("audio/")) required.add("audioInput");
-      else if (mime === "application/pdf") required.add("pdf");
-      else if (a?.url || a?.data) required.add("vision");
+
+    // Ollama / Hermes images array (strings or objects)
+    if (Array.isArray(m.images) && m.images.length > 0) {
+      required.add("vision");
     }
+
+    // Vercel AI SDK / Hermes attachments / experimental_attachments
+    const attachments = m.experimental_attachments || m.attachments;
+    if (Array.isArray(attachments)) {
+      for (const att of attachments) {
+        if (!att) continue;
+        const mime = att.contentType || att.mediaType || (typeof att.url === "string" && att.url.match(/^data:([^;,]+)/)?.[1]);
+        if (mime) addByMime(mime);
+        else if (att.url || att.data) required.add("vision");
+      }
+    }
+
+    // Direct message-level modality properties
     if (m.image_url || m.image) required.add("vision");
     if (m.audio_url || m.audio) required.add("audioInput");
+
+    // Scan array content blocks
     scanContent(m.content);
+
+    // Scan string content for embedded data URIs
     if (typeof m.content === "string") {
       if (m.content.includes("data:image/")) required.add("vision");
-      if (m.content.includes("data:audio/")) required.add("audioInput");
-      if (m.content.includes("data:application/pdf")) required.add("pdf");
+      else if (m.content.includes("data:audio/")) required.add("audioInput");
+      else if (m.content.includes("data:application/pdf")) required.add("pdf");
     }
   };
 
   // Modalities: current user turn only (trailing user run across each known shape).
-  for (const m of trailingUserItems(body.messages)) scanMessage(m);              // openai / claude / Hermes
+  for (const m of trailingUserItems(body.messages)) scanMessage(m);              // openai / claude / hermes / ollama
   for (const it of trailingUserItems(body.input)) scanContent(it.content);       // responses
   const contents = body.contents || body.request?.contents;                      // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
 
-  // search: detect web_search tool in tools array
-  if (Array.isArray(body.tools)) {
-    for (const tool of body.tools) {
-      if (tool?.type === "web_search") { required.add("search"); break; }
-    }
-  }
+  // search: temporarily disabled in auto-switch (feature not wired yet).
 
   return required;
 }
@@ -249,49 +266,18 @@ export function getComboModelsFromData(modelStr, combosData) {
 }
 
 /**
- * Combine multiple AbortSignals into one. The returned signal aborts as soon as
- * any source aborts. Sources that are not AbortSignal instances are ignored.
- */
-function combineSignals(...signals) {
-  const sources = signals.filter((s) => s && typeof s.addEventListener === "function");
-  if (sources.length === 0) return null;
-  if (sources.length === 1) return sources[0];
-
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  let aborted = false;
-
-  for (const sig of sources) {
-    if (sig.aborted) {
-      aborted = true;
-      break;
-    }
-    sig.addEventListener("abort", onAbort, { once: true });
-  }
-
-  if (aborted) {
-    controller.abort();
-  }
-
-  return controller.signal;
-}
-
-/**
  * Handle combo chat with fallback
  * @param {Object} options
  * @param {Object} options.body - Request body
  * @param {string[]} options.models - Array of model strings to try
- * @param {Function} options.handleSingleModel - Function to handle single model: (body, modelStr, { signal }) => Promise<Response>
+ * @param {Function} options.handleSingleModel - Function to handle single model: (body, modelStr) => Promise<Response>
  * @param {Object} options.log - Logger object
  * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
- * @param {AbortSignal} [options.signal] - Optional external signal (e.g. client disconnect) that aborts every target
- * @param {number} [options.timeoutMs=DEFAULT_COMBO_TARGET_TIMEOUT_MS] - Max time to wait for a target to return response headers
- * @param {number} [options.queueDepth] - Optional per-combo account-semaphore queue depth (0 = fail immediately on saturation)
  * @returns {Promise<Response>}
  */
-export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true, signal = null, timeoutMs = DEFAULT_COMBO_TARGET_TIMEOUT_MS, queueDepth = null }) {
+export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
   // Apply rotation strategy if enabled
   let rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
 
@@ -313,64 +299,11 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
 
   for (let i = 0; i < rotatedModels.length; i++) {
     const modelStr = rotatedModels[i];
-
-    // Honor external abort before trying the next target.
-    if (signal?.aborted) {
-      log.info("COMBO", "External signal aborted — stopping combo fallback");
-      return new Response(
-        JSON.stringify({ error: { message: "Client disconnected" } }),
-        { status: 499, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
     try {
-      let result;
-      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-        result = await handleSingleModel(body, modelStr);
-      } else {
-        const timeoutController = new AbortController();
-        let timeoutId;
-        let timedOut = false;
-
-        const targetSignal = combineSignals(signal, timeoutController.signal);
-        const targetOptions = {};
-        if (targetSignal) targetOptions.signal = targetSignal;
-        if (queueDepth != null) targetOptions.maxQueueSize = queueDepth;
-
-        const timeoutPromise = new Promise((resolve) => {
-          timeoutId = setTimeout(() => {
-            timedOut = true;
-            log.warn("COMBO", `Model ${modelStr} exceeded ${timeoutMs}ms timeout — falling back`);
-            timeoutController.abort(new Error("combo-per-model-timeout"));
-            resolve(
-              new Response(
-                JSON.stringify({ error: { message: `Model ${modelStr} timed out` } }),
-                { status: 524, headers: { "Content-Type": "application/json" } }
-              )
-            );
-          }, timeoutMs);
-        });
-
-        try {
-          result = await Promise.race([
-            Promise.resolve(handleSingleModel(body, modelStr, Object.keys(targetOptions).length > 0 ? targetOptions : undefined)).catch((err) => {
-              if (timedOut) {
-                // The inner call rejected because we aborted it. The synthetic 524
-                // from timeoutPromise already won the race; return an empty response
-                // so the loser branch resolves cleanly without leaking err.message.
-                return new Response(null, { status: 599 });
-              }
-              throw err;
-            }),
-            timeoutPromise,
-          ]);
-        } finally {
-          clearTimeout(timeoutId);
-        }
-      }
-
+      const result = await handleSingleModel(body, modelStr);
+      
       // Success (2xx) - return response
       if (result.ok) {
         log.info("COMBO", `Model ${modelStr} succeeded`);
@@ -632,6 +565,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
 
   // 1. Fan out to the panel in parallel: non-streaming, tools stripped (we want prose).
   const { tools, tool_choice, stream_options, ...rest } = body;
+  // Fusion runs panel models non-streaming; drop stream_options too, or providers
+  // like DeepSeek reject it with "stream_options should be set along with stream = true".
+  // See issue #3024.
   const panelBody = { ...rest, stream: false };
 
   // Flatten tool turns to prose so panel models keep context without emitting tool_calls.

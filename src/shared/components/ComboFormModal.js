@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import Input from "./Input";
 import Button from "./Button";
@@ -11,45 +11,38 @@ const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 // Inline editable model item
 function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
   const [editing, setEditing] = useState(false);
-  const [draftOverride, setDraft] = useState(null);
-  const [prevModel, setPrevModel] = useState(model);
-  if (prevModel !== model) {
-    setPrevModel(model);
-    setDraft(null);
-  }
-  const draft = draftOverride ?? model;
+  const [draft, setDraft] = useState(model);
   const commit = () => {
     const trimmed = draft.trim();
     if (trimmed && trimmed !== model) onEdit(trimmed);
-    else setDraft(null);
+    else setDraft(model);
     setEditing(false);
   };
   const handleKeyDown = (e) => {
     if (e.key === "Enter") commit();
-    if (e.key === "Escape") { setDraft(null); setEditing(false); }
+    if (e.key === "Escape") { setDraft(model); setEditing(false); }
   };
   return (
     <div className="group flex min-w-0 items-center gap-1.5 rounded-md bg-black/[0.02] px-2 py-1 transition-colors hover:bg-black/[0.04] dark:bg-white/[0.02] dark:hover:bg-white/[0.04]">
       <span className="text-[10px] font-medium text-text-muted w-3 text-center shrink-0">{index + 1}</span>
       {editing ? (
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown}
-          className="min-w-0 flex-1 rounded border border-primary/40 bg-white px-1.5 py-0.5 font-mono text-xs text-text-main outline-none dark:bg-black/20"
-          aria-label={`Edit model ${index + 1}`} />
+        <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={handleKeyDown}
+          className="min-w-0 flex-1 rounded border border-primary/40 bg-white px-1.5 py-0.5 font-mono text-xs text-text-main outline-none dark:bg-black/20" />
       ) : (
-        <button type="button" className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main text-left hover:bg-black/5 dark:hover:bg-white/5"
-          onClick={() => setEditing(true)} title="Click to edit" aria-label={`Edit model: ${model}`}>{model}</button>
+        <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main hover:bg-black/5 dark:hover:bg-white/5"
+          onClick={() => setEditing(true)} title="Click to edit">{model}</div>
       )}
       <div className="flex shrink-0 items-center gap-0.5">
-        <button type="button" onClick={onMoveUp} disabled={isFirst}
+        <button onClick={onMoveUp} disabled={isFirst}
           className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move up">
           <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
         </button>
-        <button type="button" onClick={onMoveDown} disabled={isLast}
+        <button onClick={onMoveDown} disabled={isLast}
           className={`p-0.5 rounded ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move down">
           <span className="material-symbols-outlined text-[12px]">arrow_downward</span>
         </button>
       </div>
-      <button type="button" onClick={onRemove} className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-500 transition-all" title="Remove">
+      <button onClick={onRemove} className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-500 transition-all" title="Remove">
         <span className="material-symbols-outlined text-[12px]">close</span>
       </button>
     </div>
@@ -69,15 +62,9 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const [nameError, setNameError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
 
-  const wasOpenRef = useRef(false);
-
   useEffect(() => {
-    if (!isOpen) { wasOpenRef.current = false; return; }
-    if (wasOpenRef.current) return;
-    wasOpenRef.current = true;
-    const controller = new AbortController();
-    fetch("/api/models/alias", { signal: controller.signal }).then((r) => r.ok ? r.json() : null).then((d) => { if (d && !controller.signal.aborted) setModelAliases(d.aliases || {}); }).catch(() => {});
-    return () => controller.abort();
+    if (!isOpen) return;
+    fetch("/api/models/alias").then((r) => r.ok ? r.json() : null).then((d) => d && setModelAliases(d.aliases || {})).catch(() => {});
   }, [isOpen]);
 
   const validateName = (value) => {
@@ -128,10 +115,10 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
           <div>
             {forcePrefix ? (
               <>
-                <label htmlFor="combo-name-input" className="text-sm font-medium mb-1 block">Combo Name</label>
+                <label className="text-sm font-medium mb-1 block">Combo Name</label>
                 <div className="flex items-stretch">
                   <span className="inline-flex items-center px-2 rounded-l border border-r-0 border-black/10 dark:border-white/10 bg-black/[0.04] dark:bg-white/[0.04] text-text-muted font-mono text-sm">{forcePrefix}</span>
-                  <input id="combo-name-input" value={name} onChange={handleNameChange} placeholder="my-combo"
+                  <input value={name} onChange={handleNameChange} placeholder="my-combo"
                     className="flex-1 min-w-0 rounded-r border border-black/10 dark:border-white/10 bg-white dark:bg-black/20 px-2 py-1.5 font-mono text-sm outline-none focus:border-primary" />
                 </div>
                 {nameError && <p className="text-[11px] text-red-500 mt-0.5">{nameError}</p>}
@@ -145,7 +132,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
           </div>
 
           <div>
-            <span className="text-sm font-medium mb-1.5 block">Models</span>
+            <label className="text-sm font-medium mb-1.5 block">Models</label>
             {models.length === 0 ? (
               <div className="text-center py-4 border border-dashed border-black/10 dark:border-white/10 rounded-lg bg-black/[0.01] dark:bg-white/[0.01]">
                 <span className="material-symbols-outlined text-text-muted text-xl mb-1">layers</span>
@@ -154,7 +141,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
             ) : (
               <div className="flex max-h-[55vh] min-w-0 flex-col gap-1 overflow-y-auto sm:max-h-[350px]">
                 {models.map((model, index) => (
-                  <ModelItem key={model} index={index} model={model}
+                  <ModelItem key={index} index={index} model={model}
                     isFirst={index === 0} isLast={index === models.length - 1}
                     onEdit={(v) => { const a = [...models]; a[index] = v; setModels(a); }}
                     onMoveUp={() => handleMoveUp(index)}
@@ -163,7 +150,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
                 ))}
               </div>
             )}
-            <button type="button" onClick={() => setShowModelSelect(true)}
+            <button onClick={() => setShowModelSelect(true)}
               className="w-full mt-2 py-2 border border-dashed border-black/10 dark:border-white/10 rounded-lg text-xs text-primary font-medium hover:text-primary hover:border-primary/50 transition-colors flex items-center justify-center gap-1">
               <span className="material-symbols-outlined text-[16px]">add</span>
               Add Model
@@ -184,8 +171,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
           onSelect={handleAddModel} onDeselect={handleDeselectModel}
           activeProviders={activeProviders} modelAliases={modelAliases}
           title="Add Model to Combo" kindFilter={kindFilter}
-          addedModelValues={models} closeOnSelect={false}
-          onBack={() => setShowModelSelect(false)} />
+          addedModelValues={models} closeOnSelect={false} />
       )}
     </>
   );
