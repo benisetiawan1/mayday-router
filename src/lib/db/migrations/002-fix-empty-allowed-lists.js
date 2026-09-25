@@ -4,7 +4,7 @@
 // semantics and must be treated as NULL (unrestricted) to avoid silently blocking all requests.
 //
 // NOTE: This migration must be idempotent — the columns may not exist yet if migrating from
-// a pre-ACL schema (e.g. 9Router v0.5.x). Migration 003 adds them. Running UPDATE on
+// a pre-ACL schema (e.g. Mayday v0.5.x). Migration 003 adds them. Running UPDATE on
 // non-existent columns would crash the entire migration chain.
 export default {
   version: 2,

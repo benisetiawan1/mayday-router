@@ -39,5 +39,5 @@ Verify: `curl $NINEROUTER_URL/api/health` → `{"ok":true}`.
 
 ## Links
 
-- Source: https://github.com/decolua/9router
-- Dashboard: https://9router.com
+- Source: https://github.com/benisetiawan1/mayday-router
+- Dashboard: https://mayday.20c.org

@@ -2,7 +2,7 @@ const DEFAULT_VERSION = "0.1.58";
 const RELEASE_URL = "https://api.github.com/repos/getkimchi/kimchi/releases/latest";
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
-const STATE_KEY = "__9routerKimchiUserAgent";
+const STATE_KEY = "__maydayKimchiUserAgent";
 
 const state = globalThis[STATE_KEY] || (globalThis[STATE_KEY] = {
   value: `kimchi/${DEFAULT_VERSION}`,

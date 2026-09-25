@@ -105,7 +105,7 @@ const FREE_ROOT_AGENT_BY_MODEL = {
 // by a 428 from chat — no early re-claim, so we never POST /session while our
 // own row is still active (which could come back as a spurious model_locked).
 // All state lives on globalThis so Next dev (Turbopack) bundles share ONE copy.
-const FB_STATE_KEY = "__9routerFreebuffState__";
+const FB_STATE_KEY = "__maydayFreebuffState__";
 const fbState = (globalThis[FB_STATE_KEY] ??= {
   sessionCache: new Map(),      // `${token}::${model}` -> { instanceId, expiresAt }
   inflight: new Map(),          // dedupe concurrent claims for the same key
@@ -449,7 +449,7 @@ export class FreebuffExecutor extends BaseExecutor {
     body.codebuff_metadata = {
       client_id:
         credentials?.providerSpecificData?.fingerprintId ||
-        `9router-${crypto.randomUUID()}`,
+        `mayday-${crypto.randomUUID()}`,
       cost_mode: "free",
     };
     body.provider = { allow_fallbacks: false };

@@ -33,7 +33,7 @@ function readTailLines(filePath, maxBytes = 256 * 1024, maxLines = 300) {
 }
 
 /**
- * Fetch PM2 logs (error log and stdout log) for 9router process.
+ * Fetch PM2 logs (error log and stdout log) for mayday process.
  */
 export function getPm2Logs(maxLinesPerFile = 200) {
   const pm2Home = process.env.PM2_HOME || path.join(os.homedir(), ".pm2");
@@ -55,22 +55,22 @@ export function getPm2Logs(maxLinesPerFile = 200) {
 
   try {
     const files = fs.readdirSync(pm2LogsDir);
-    // Prefer 9router-error.log or 9router-dev-error.log or 9router-error-0.log
+    // Prefer mayday-error.log or mayday-dev-error.log or mayday-error-0.log
     for (const f of files) {
-      if (!errorLogFile && (f.includes("9router") || f.includes("router")) && f.includes("error")) {
+      if (!errorLogFile && (f.includes("mayday") || f.includes("router")) && f.includes("error")) {
         errorLogFile = path.join(pm2LogsDir, f);
       }
-      if (!outLogFile && (f.includes("9router") || f.includes("router")) && (f.includes("out") || f.includes("output"))) {
+      if (!outLogFile && (f.includes("mayday") || f.includes("router")) && (f.includes("out") || f.includes("output"))) {
         outLogFile = path.join(pm2LogsDir, f);
       }
     }
 
     // Fallbacks
-    if (!errorLogFile && fs.existsSync(path.join(pm2LogsDir, "9router-error.log"))) {
-      errorLogFile = path.join(pm2LogsDir, "9router-error.log");
+    if (!errorLogFile && fs.existsSync(path.join(pm2LogsDir, "mayday-error.log"))) {
+      errorLogFile = path.join(pm2LogsDir, "mayday-error.log");
     }
-    if (!outLogFile && fs.existsSync(path.join(pm2LogsDir, "9router-out.log"))) {
-      outLogFile = path.join(pm2LogsDir, "9router-out.log");
+    if (!outLogFile && fs.existsSync(path.join(pm2LogsDir, "mayday-out.log"))) {
+      outLogFile = path.join(pm2LogsDir, "mayday-out.log");
     }
   } catch {
     // Ignore read errors

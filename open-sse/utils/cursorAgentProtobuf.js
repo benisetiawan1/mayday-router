@@ -65,7 +65,7 @@ export function encodeMcpToolDefinition(tool) {
     encodeField(1, LEN, name),
     ...(description ? [encodeField(2, LEN, description)] : []),
     encodeField(3, LEN, encodeAgentValue(schema)),
-    encodeField(4, LEN, "9router"),
+    encodeField(4, LEN, "mayday"),
     encodeField(5, LEN, name)
   );
 }

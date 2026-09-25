@@ -10,7 +10,7 @@ import {
   clearProxyPoolFitness,
 } from "@/models";
 
-const FITNESS_STATE_KEY = "__9routerPoolFitness__";
+const FITNESS_STATE_KEY = "__maydayPoolFitness__";
 const fitness = (globalThis[FITNESS_STATE_KEY] ??= new Map());
 
 export const POOL_UNFIT_MS = 5 * 60 * 1000;

@@ -4,7 +4,7 @@ import os from "os";
 
 // APP_NAME must match the data directory used by the DB driver.
 // Do not rename — this controls where ~/.<APP_NAME>/db/data.sqlite lives.
-const APP_NAME = "9router" + "";
+const APP_NAME = "mayday" + "";
 
 function defaultDir() {
   if (process.platform === "win32") {
@@ -17,7 +17,7 @@ function looksLikeSmokeDataDir(configured) {
   const normalized = configured.toLowerCase().replace(/\\/g, "/");
   // Explicit smoke-test directories used by CI / local smoke scripts.
   if (normalized.includes("smoke")) return true;
-  if (/^\/tmp\/9router-data-/.test(normalized)) return true;
+  if (/^\/tmp\/mayday-data-/.test(normalized)) return true;
   // macOS sandbox temp paths are never intended for persistent DB storage.
   if (process.platform === "darwin" && normalized.includes("/var/folders/")) return true;
   return false;
@@ -38,7 +38,7 @@ export function getDataDir() {
 
   // Prevent production/PM2 deployments from accidentally using a smoke-test or
   // temp directory as the persistent data store. A temp DATA_DIR means the DB
-  // appears "empty" after reboot/cleanup and real data in ~/.9router is ignored.
+  // appears "empty" after reboot/cleanup and real data in ~/.mayday is ignored.
   if (looksLikeSmokeDataDir(configured)) {
     const fallback = defaultDir();
     if (isProductionLike()) {

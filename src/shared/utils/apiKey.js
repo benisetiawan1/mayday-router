@@ -6,8 +6,8 @@ import os from "os";
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
   return process.platform === "win32"
-    ? path.join(process.env.APPDATA || os.homedir(), "9router")
-    : path.join(os.homedir(), ".9router");
+    ? path.join(process.env.APPDATA || os.homedir(), "mayday")
+    : path.join(os.homedir(), ".mayday");
 }
 
 function getApiKeySecret() {

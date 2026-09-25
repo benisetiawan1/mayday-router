@@ -2,7 +2,7 @@ import https from "https";
 import pkg from "../../../../package.json" with { type: "json" };
 
 // Mayday self-hosted update channel — check latest release from OWN GitHub repo,
-// NOT from npm registry or upstream 9router/VansRouter.
+// NOT from npm registry or upstream mayday/Mayday.
 const GITHUB_REPO = "benisetiawan1/mayday-router";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || ""; // wajib untuk repo private; kosong utk public
 const VERSION_CACHE_TTL_MS = 300000; // cache latest lookup for 5m

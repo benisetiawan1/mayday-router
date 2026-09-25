@@ -105,7 +105,7 @@ export class DevinCliExecutor extends BaseExecutor {
           safeEnv.filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])
         );
         if (apiKey) env.WINDSURF_API_KEY = apiKey;
-        const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "9router-devin-"));
+        const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "mayday-devin-"));
         const timeoutLimit = Math.min(
           Math.max(Number.parseInt(process.env.DEVIN_CLI_TIMEOUT_MS || "120000", 10) || 120000, 1000),
           600000
@@ -434,7 +434,7 @@ export class DevinCliExecutor extends BaseExecutor {
         // ── Send initialize ───────────────────────────────────────────────
         sendRpc("initialize", {
           protocolVersion: "0.3",
-          clientInfo: { name: "9router", version: "1.0" },
+          clientInfo: { name: "mayday", version: "1.0" },
           capabilities: {},
         });
       },

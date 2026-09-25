@@ -68,7 +68,7 @@ export const DEFAULT_COMBO_TARGET_TIMEOUT_MS = envMs("COMBO_TARGET_TIMEOUT_MS", 
 export const DEFAULT_MAX_TOKENS = 64000;
 export const DEFAULT_MIN_TOKENS = 32000;
 
-export const TOKEN_SAVER_HEADER = "x-9router-token-saver";
+export const TOKEN_SAVER_HEADER = "x-mayday-token-saver";
 
 // Retry config for 429 responses (legacy - kept for backward compatibility)
 export const RETRY_CONFIG = {
