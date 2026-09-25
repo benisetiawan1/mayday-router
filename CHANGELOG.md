@@ -20,3 +20,11 @@
 ### Update channel fix
 - version/route.js: pakai GitHub /releases (list) dengan semver sort termasuk prerelease (-beta). Sebelumnya /releases/latest tidak pernah mengembalikan rilis beta sehingga update tidak terdeteksi.
 - Update channel sekarang benar-benar berfungsi untuk alur rilis beta Mayday.
+
+## 0.24.0-beta (2026-09-25)
+
+### Investigasi MiMo Code Free
+- Registry & executor mimo-free sudah terdaftar; model check belum tuntas (perlu verifikasi PROVIDERS.baseUrl & bootstrap upstream). Fix lanjutan di rilis berikut.
+
+### Catatan
+- Versi ini untuk uji deteksi update channel (tanpa perubahan fungsional baru).
