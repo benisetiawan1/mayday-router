@@ -42,3 +42,11 @@
 - combo.js: audio/video input handling + MIME-based capability detection.
 - combosRepo.js, ComboFormModal.js: sinkron upstream.
 - Baru: src/lib/comboPresets.js (preset Cursor/Claude) + route /api/combos/presets.
+
+## 0.27.0-beta (2026-09-25)
+
+### Combo halaman & route (port dari 9router v0.5.86)
+- PORT: api/combos/route.js + [id]/route.js (35-20 baris diff sebelumnya).
+- PORT: dashboard/combos/page.js (692 baris diff — halaman baru full).
+- SYNC: dashboard/media-providers/combo (termasuk [id]).
+- Tampilan combo kini sejajar 9router.
