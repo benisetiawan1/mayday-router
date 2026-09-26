@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSkillManifests, createCustomSkill, deleteCustomSkill } from "@/lib/skillsRegistry.js";
+import { getSkillManifests, createCustomSkill, updateCustomSkill, deleteCustomSkill } from "@/lib/skillsRegistry.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -48,6 +48,21 @@ export async function DELETE(request) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
     const result = await deleteCustomSkill(id);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+    const body = await request.json().catch(() => ({}));
+    const result = await updateCustomSkill(id, body);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

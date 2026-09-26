@@ -36,6 +36,7 @@ export default function ExtendedClient() {
   const [settings, setSettings] = useState({});
   const [hermes, setHermes] = useState({ memory: [], user: [] });
   const [form, setForm] = useState({ id: "", name: "", description: "", prompt: "", routingMode: false });
+  const [editingId, setEditingId] = useState(null);
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
@@ -60,23 +61,46 @@ export default function ExtendedClient() {
     } catch {}
   }, []);
 
+  const editSkill = (s) => {
+    setEditingId(s.id);
+    setForm({ id: s.id, name: s.name, description: s.description || "", prompt: s.prompt_template || "", routingMode: !!s.routable });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setForm({ id: "", name: "", description: "", prompt: "", routingMode: false });
+  };
+
   const saveSkill = async () => {
     if (!form.id || !form.name) { setMsg("id dan name wajib"); return; }
     try {
-      await api("/api/skills", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: form.id,
-          name: form.name,
-          description: form.description,
-          prompt_template: form.prompt,
-          hook: "system-prompt",
-          routable: form.routingMode,
-        }),
-      });
+      if (editingId) {
+        await api(`/api/skills?id=${encodeURIComponent(editingId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: form.name,
+            description: form.description,
+            prompt_template: form.prompt,
+            routable: form.routingMode,
+          }),
+        });
+      } else {
+        await api("/api/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: form.id,
+            name: form.name,
+            description: form.description,
+            prompt_template: form.prompt,
+            hook: "system-prompt",
+            routable: form.routingMode,
+          }),
+        });
+      }
       setMsg("Skill tersimpan");
-      setForm({ id: "", name: "", description: "", prompt: "", routingMode: false });
+      cancelEdit();
       load();
     } catch (e) { setMsg(e.message); }
   };
@@ -162,6 +186,7 @@ export default function ExtendedClient() {
             className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
             placeholder="id (a-z, 0-9, -, _)"
             value={form.id}
+            disabled={!!editingId}
             onChange={(e) => setForm({ ...form, id: e.target.value })}
           />
           <input
@@ -198,8 +223,17 @@ export default function ExtendedClient() {
             onClick={saveSkill}
             className="px-3 py-1.5 rounded-md bg-primary text-white text-[12px] font-medium hover:bg-primary/90 cursor-pointer w-fit"
           >
-            Simpan skill
+            {editingId ? "Update skill" : "Simpan skill"}
           </button>
+          {editingId && (
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="px-3 py-1.5 rounded-md border border-border-subtle text-[12px] hover:bg-surface-2 cursor-pointer w-fit"
+            >
+              Batal
+            </button>
+          )}
         </div>
 
         {skills.length > 0 && (
@@ -216,6 +250,13 @@ export default function ExtendedClient() {
                   className="px-2 py-1 rounded-md border border-border-subtle text-[11px] hover:bg-surface-2 cursor-pointer shrink-0"
                 >
                   Hapus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editSkill(s)}
+                  className="px-2 py-1 rounded-md border border-border-subtle text-[11px] hover:bg-surface-2 cursor-pointer shrink-0"
+                >
+                  Edit
                 </button>
               </li>
             ))}

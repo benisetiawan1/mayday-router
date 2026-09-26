@@ -109,6 +109,41 @@ export async function createCustomSkill(skillData) {
   return { success: true, manifest };
 }
 
+export async function updateCustomSkill(skillId, skillData) {
+  const skillsDir = getSkillsDir();
+  if (!/^[a-zA-Z0-9_-]+$/.test(skillId)) throw new Error("invalid skill id");
+  const folder = path.join(skillsDir, skillId);
+  const manifestPath = path.join(folder, "manifest.json");
+
+  let existing;
+  try {
+    existing = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  } catch {
+    throw new Error("skill not found");
+  }
+
+  const manifest = {
+    ...existing,
+    name: skillData.name ?? existing.name,
+    description: skillData.description ?? existing.description ?? "",
+    hook: skillData.hook || existing.hook || "system-prompt",
+    routable: skillData.routable !== undefined ? !!skillData.routable : existing.routable,
+  };
+  if (Array.isArray(skillData.config_schema) && skillData.config_schema.length > 0) {
+    manifest.config_schema = skillData.config_schema;
+  }
+
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+  if (skillData.prompt_template) {
+    await fs.writeFile(path.join(folder, "prompt.txt"), skillData.prompt_template, "utf8");
+    await fs.writeFile(path.join(folder, "SKILL.md"), skillData.prompt_template, "utf8");
+  }
+
+  clearSkillCache();
+  return { success: true, manifest };
+}
+
 export async function deleteCustomSkill(skillId) {
   const skillsDir = getSkillsDir();
   if (!/^[a-zA-Z0-9_-]+$/.test(skillId)) throw new Error("invalid skill id");
