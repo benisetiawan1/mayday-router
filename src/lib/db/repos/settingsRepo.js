@@ -51,6 +51,13 @@ const DEFAULT_SETTINGS = {
   cavemanLevel: "full",
   ponytailEnabled: false,
   ponytailLevel: "full",
+  // Extended features — all default OFF (adopted from 9router-extended, safe subset)
+  extendedSkillRouterEnabled: false,
+  extendedSkillDedupEnabled: false,
+  hermesBridgeEnabled: false,
+  hermes_auto_save_memory: false,
+  hermes_extraction_model: "gpt-4o-mini",
+  hermes_extraction_cooldown_seconds: 60,
 };
 
 async function readRaw() {

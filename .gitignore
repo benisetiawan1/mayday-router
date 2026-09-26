@@ -41,3 +41,6 @@ graphify-out
 check-update
 # Internal tooling — tidak di-sync ke GitHub (pakai copy lokal)
 scripts/
+
+# Upstream repo untuk bahan perbandingan (bukan bagian build)
+references/

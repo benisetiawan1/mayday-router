@@ -7,6 +7,12 @@ import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 
+// Strip "combo:" prefix from a combo model id (e.g. "combo:my-stack" -> "my-stack").
+export function stripComboPrefix(modelStr) {
+  if (typeof modelStr !== "string") return modelStr;
+  return modelStr.startsWith("combo:") ? modelStr.slice(6) : modelStr;
+}
+
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
 const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);

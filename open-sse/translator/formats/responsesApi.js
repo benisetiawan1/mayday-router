@@ -1,5 +1,55 @@
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
+export const MAX_RESPONSES_CALL_ID_LEN = 64;
+
+// Per-process sequence keeps same-millisecond ids unique so function_call ↔
+// function_call_output correlation never collides.
+let responsesCallIdSeq = 0;
+
+export function clampResponsesCallId(id) {
+  if (typeof id !== "string" || !id) return `call_${Date.now()}_${(responsesCallIdSeq += 1)}`;
+  return id.length > MAX_RESPONSES_CALL_ID_LEN ? id.substring(0, MAX_RESPONSES_CALL_ID_LEN) : id;
+}
+
+// Single-stringify: objects → JSON once; valid JSON strings pass through untouched;
+// anything else falls back to "{}" instead of double-encoding.
+export function coerceResponsesArguments(value) {
+  if (value === undefined || value === null || value === "") return "{}";
+  if (typeof value !== "string") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "{}";
+    }
+  }
+  try {
+    JSON.parse(value);
+    return value;
+  } catch {
+    return "{}";
+  }
+}
+
+// function_call_output.output must be a string — never null/object.
+export function coerceResponsesOutput(value) {
+  if (typeof value === "string") return value;
+  if (value === undefined || value === null) return "";
+  if (Array.isArray(value)) {
+    return value.map((c) => {
+      try {
+        return c?.text ?? JSON.stringify(c);
+      } catch {
+        return String(c);
+      }
+    }).join("");
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * Normalize Responses API input to array format.
  * Accepts string or array, returns array of message items.

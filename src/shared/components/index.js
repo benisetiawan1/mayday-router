@@ -50,6 +50,7 @@ export { default as Tooltip } from "./Tooltip";
 export { default as CapacityBadges } from "./CapacityBadges";
 
 // Layouts
-export * from "./layouts";
+export { default as DashboardLayout } from "./layouts/DashboardLayout";
+export { default as AuthLayout } from "./layouts/AuthLayout";
 
 

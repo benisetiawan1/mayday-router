@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.29.0-beta (2026-09-26)
+
+### Adopsi 9router-extended (subset aman)
+- UI `/dashboard/extended` (Sidebar "Extended"): toggle Skill Router & Session Dedup, Hermes Memory Bridge, Custom Skill Studio.
+- Skill Router TF-IDF (src/skills/tfidf.js + autoRouter.js) — klasifikasi intent user ke skill manifest-driven, threshold per-skill, default OFF.
+- Session Skill Dedup (src/lib/session/cache.js) — inject penuh sekali per sesi, selanjutnya reminder (flag OFF default).
+- Manifest-driven Skills Registry (src/lib/skillsRegistry.js) — CRUD disk `skills/<id>/manifest.json`, TANPA exec (install/update hanya metadata).
+- Hermes Memory Bridge (aman): baca/tulis snapshot `DATA_DIR/hermes-bridge/`, read-only dari Hermes, default OFF. Tidak menyentuh `~/.hermes/memories/`.
+- API: `/api/skills` (GET/POST/DELETE), `/api/hermes/memory` (import/append).
+
+### Perbaikan build (pre-existing)
+- `stripComboPrefix` di `open-sse/services/combo.js` (port dari vansrouter, prefix `combo:`).
+- `aggregateComboCapabilities` di `open-sse/providers/capabilities.js` (port dari 9router).
+- `clampResponsesCallId` / `coerceResponsesArguments` / `coerceResponsesOutput` di `open-sse/translator/formats/responsesApi.js` (port dari 9router).
+- `src/shared/components/index.js`: `export *` -> named exports (DashboardLayout, AuthLayout).
+
+### Tidak diterapkan (skip)
+- Security Gateway (#7), Auto-Suggest Combo (#4c), execAsync install (RCE), dead code (dedup-prompt.js/skillSetHash), Hermes detect/install/process/telegram.
+
 ## 0.22.0-beta (2026-09-25)
 
 ### Fix OpenCode free-tier

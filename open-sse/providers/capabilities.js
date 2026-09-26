@@ -1481,6 +1481,52 @@ function isCommandCodeTextOnly(model) {
   return false;
 }
 
+/**
+ * Merge capabilities across all members of a combo (including nested combos,
+ * resolved recursively through comboLookup, depth-capped).
+ * Input/soft modalities are OR'd (any member supports it), tools are AND'd
+ * (every member must), reasoning fields and context/max-output extremes follow
+ * the primary (first) member.
+ * @param {string[]} comboModels
+ * @param {Object|null} [comboLookup] map of combo name -> models array
+ * @param {number} [_depth] recursion guard
+ * @returns {object|null}
+ */
+export function aggregateComboCapabilities(comboModels, comboLookup = null, _depth = 0) {
+  const members = Array.isArray(comboModels) ? comboModels.filter((id) => typeof id === "string") : [];
+  if (members.length === 0 || _depth > 6) return null;
+
+  const allCaps = members.map((fullId) => {
+    const name = fullId.startsWith("combo:") ? fullId.slice(6) : fullId;
+    if (!fullId.includes("/") && comboLookup?.[name]) {
+      return aggregateComboCapabilities(comboLookup[name], comboLookup, _depth + 1)
+        ?? getCapabilitiesForModel(null, name);
+    }
+    const slash = fullId.indexOf("/");
+    const provider = slash === -1 ? null : fullId.slice(0, slash);
+    const model = slash === -1 ? fullId : fullId.slice(slash + 1);
+    return getCapabilitiesForModel(provider, model);
+  });
+
+  const first = allCaps[0];
+  return {
+    vision: allCaps.some((c) => c.vision),
+    pdf: allCaps.some((c) => c.pdf),
+    audioInput: allCaps.some((c) => c.audioInput),
+    videoInput: allCaps.some((c) => c.videoInput),
+    imageOutput: allCaps.some((c) => c.imageOutput),
+    audioOutput: allCaps.some((c) => c.audioOutput),
+    search: allCaps.some((c) => c.search),
+    tools: allCaps.every((c) => c.tools),
+    reasoning: first.reasoning,
+    thinkingFormat: first.thinkingFormat,
+    thinkingCanDisable: first.thinkingCanDisable,
+    thinkingRange: first.thinkingRange,
+    contextWindow: Math.min(...allCaps.map((c) => c.contextWindow)),
+    maxOutput: Math.max(...allCaps.map((c) => c.maxOutput)),
+  };
+}
+
 export function getCapabilitiesForModel(provider, model) {
   if (!model) return { ...DEFAULT_CAPABILITIES };
 

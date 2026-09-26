@@ -27,6 +27,8 @@ import { detectLoop } from "../utils/loopGuard.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { injectSystemPrompt } from "../rtk/systemInject.js";
+import { classifyRequestSkills } from "@/skills/autoRouter.js";
+import { markSkillInjected } from "@/lib/session/cache.js";
 import { injectTerminationPrompt, injectToolProtocolPrompt } from "../rtk/terminationPrompt.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
@@ -125,7 +127,7 @@ export function stripContinuityFields(body) {
   return body;
 }
 
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, apiKeyInfo = null, apiKeyName = null, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs = 3000, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars = 1000, pxpipeTimeoutMs = 10000, pxpipeTransform = "png", onPxpipeEvent = null, sourceFormatOverride, providerThinking, clientSignal, loopGuardEnabled = true, systemPrompt = null, clientModelId = null, resolveProxyConfig = null }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, apiKeyInfo = null, apiKeyName = null, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs = 3000, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars = 1000, pxpipeTimeoutMs = 10000, pxpipeTransform = "png", onPxpipeEvent = null, sourceFormatOverride, providerThinking, clientSignal, loopGuardEnabled = true, systemPrompt = null, clientModelId = null, resolveProxyConfig = null, extendedSkillRouterEnabled = false, extendedSkillDedupEnabled = false, sessionId = null }) {
   const { provider, model, accountCount = 0 } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -340,6 +342,26 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (tokenSaverEnabled && ponytailEnabled && ponytailLevel) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
     log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
+  }
+
+  // Extended skill router: TF-IDF classify the ORIGINAL user query and inject
+  // matched manifest-driven skill prompts. Fail-open, default OFF.
+  if (tokenSaverEnabled && extendedSkillRouterEnabled) {
+    try {
+      const matched = await classifyRequestSkills(body, {});
+      for (const skill of matched) {
+        const already = extendedSkillDedupEnabled && markSkillInjected(sessionId, skill.id);
+        const prompt = already
+          ? `(Previously provided skill "${skill.name}" is still active — continue following it.)`
+          : skill.prompt_template;
+        if (prompt) {
+          injectSystemPrompt(translatedBody, finalFormat, prompt);
+          log?.info?.("SKILLROUTER", `${skill.id} (score ${skill.score}, ${already ? "reminder" : "full"})`);
+        }
+      }
+    } catch (err) {
+      log?.warn?.("SKILLROUTER", `failed: ${err.message}`);
+    }
   }
 
   if (TOOL_PROTOCOL_PROMPT_PROVIDERS.has(provider)) {

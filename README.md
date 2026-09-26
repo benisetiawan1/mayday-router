@@ -42,6 +42,17 @@ docker run -d --name mayday-router --network webapps -p 20128:20128 \
 `skills/*/SKILL.md` — dokumen yang dipaste ke AI agent mana pun supaya paham
 cara pakai Mayday. Diserve self-hosted dari `/skills/*` di dashboard.
 
+## Extended Features (9router-extended)
+
+Subset aman dari fork `thunderkex/9router-extended` yang diadopsi (default OFF):
+
+- **Skill Router TF-IDF** — klasifikasi intent user ke skill manifest-driven.
+- **Session Skill Dedup** — inject penuh sekali per sesi, reminder selanjutnya.
+- **Manifest-driven Skills Registry** — CRUD skill di disk tanpa eksekusi shell.
+- **Hermes Memory Bridge** — snapshot read-only ke `DATA_DIR/hermes-bridge/`.
+
+Kelola dari **Dashboard → Extended**.
+
 ## Kredit
 
 Mayday Router dibangun di atas pekerjaan komunitas open-source:
