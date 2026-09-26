@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, Badge } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
@@ -27,6 +28,7 @@ function CopyButton({ value, label = "Copy link" }) {
 
 function SkillRow({ skill }) {
   const url = getSkillRawUrl(skill.id);
+  const icon = skill.icon || "extension";
   return (
     <div
       className={`flex items-start gap-3 p-4 rounded-[14px] border shadow-[var(--shadow-soft)] transition-colors ${
@@ -40,7 +42,7 @@ function SkillRow({ skill }) {
           skill.isEntry ? "bg-primary text-white" : "bg-primary/10 text-primary"
         }`}
       >
-        <span className="material-symbols-outlined text-[18px]">{skill.icon}</span>
+        <span className="material-symbols-outlined text-[18px]">{icon}</span>
       </div>
 
       <div className="min-w-0 flex-1">
@@ -49,6 +51,9 @@ function SkillRow({ skill }) {
           {skill.isEntry && (
             <Badge variant="primary" size="sm">START HERE</Badge>
           )}
+          {skill.source === "custom" && (
+            <Badge variant="default" size="sm">CUSTOM</Badge>
+          )}
           {skill.endpoint && (
             <Badge variant="default" size="sm">
               <code className="text-[10px]">{skill.endpoint}</code>
@@ -56,15 +61,17 @@ function SkillRow({ skill }) {
           )}
         </div>
         <p className="text-xs text-text-muted mt-0.5">{skill.description}</p>
-        <a
-          href={getSkillBlobUrl(skill.id)}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[11px] text-text-muted hover:text-primary mt-1 inline-flex items-center gap-1 break-all"
-        >
-          {url}
-          <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-        </a>
+        {skill.id && (
+          <a
+            href={getSkillBlobUrl(skill.id)}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] text-text-muted hover:text-primary mt-1 inline-flex items-center gap-1 break-all"
+          >
+            {url}
+            <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+          </a>
+        )}
       </div>
 
       <CopyButton value={url} />
@@ -73,6 +80,20 @@ function SkillRow({ skill }) {
 }
 
 export default function SkillsPage() {
+  const [customSkills, setCustomSkills] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/skills", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : { skills: [] }))
+      .then((d) => setCustomSkills(d.skills || []))
+      .catch(() => setCustomSkills([]));
+  }, []);
+
+  const builtInIds = new Set(SKILLS.map((s) => s.id));
+  const extraSkills = customSkills
+    .filter((s) => !builtInIds.has(s.id))
+    .map((s) => ({ id: s.id, name: s.name, description: s.description || "", source: "custom", icon: "extension" }));
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <Card padding="md">
@@ -84,6 +105,9 @@ export default function SkillsPage() {
 
       <div className="space-y-2">
         {SKILLS.map((skill) => (
+          <SkillRow key={skill.id} skill={skill} />
+        ))}
+        {extraSkills.map((skill) => (
           <SkillRow key={skill.id} skill={skill} />
         ))}
       </div>

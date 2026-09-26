@@ -101,6 +101,8 @@ export async function createCustomSkill(skillData) {
 
   if (skillData.prompt_template) {
     await fs.writeFile(path.join(folder, "prompt.txt"), skillData.prompt_template, "utf8");
+    // Also emit SKILL.md so the skill is self-hostable and links on the Skills page work.
+    await fs.writeFile(path.join(folder, "SKILL.md"), skillData.prompt_template, "utf8");
   }
 
   clearSkillCache();
