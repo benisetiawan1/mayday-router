@@ -20,7 +20,7 @@ async function readSkillFile(id, name) {
 }
 
 export async function GET(_request, { params }) {
-  const id = params?.id;
+  const { id } = await params;
   if (!id || !VALID_ID.test(id)) {
     return new Response("Not found", { status: 404 });
   }
