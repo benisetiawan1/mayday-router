@@ -32,8 +32,7 @@ export async function reactivateExpiredKimchiAccounts() {
   // Node built-in deps) into the instrumentation compilation. The relative path
   // is required because webpackIgnore also disables @ alias resolution.
   const { getProviderConnections, updateProviderConnection } = await import(
-    /* webpackIgnore: true */
-    "../../lib/localDb.js"
+    "@/lib/localDb.js"
   );
 
   let connections;
