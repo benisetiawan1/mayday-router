@@ -133,6 +133,8 @@ export async function updateCustomSkill(skillId, skillData) {
     hook: skillData.hook || existing.hook || "system-prompt",
     routable: skillData.routable !== undefined ? !!skillData.routable : existing.routable,
   };
+  if (Array.isArray(skillData.triggers)) manifest.triggers = skillData.triggers;
+  if (Array.isArray(skillData.keywords)) manifest.keywords = skillData.keywords;
   if (Array.isArray(skillData.config_schema) && skillData.config_schema.length > 0) {
     manifest.config_schema = skillData.config_schema;
   }

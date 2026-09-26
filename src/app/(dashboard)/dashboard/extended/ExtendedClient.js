@@ -35,7 +35,7 @@ export default function ExtendedClient() {
   const [skills, setSkills] = useState([]);
   const [settings, setSettings] = useState({});
   const [hermes, setHermes] = useState({ memory: [], user: [] });
-  const [form, setForm] = useState({ id: "", name: "", description: "", prompt: "", routingMode: false });
+  const [form, setForm] = useState({ id: "", name: "", description: "", prompt: "", routingMode: false, triggers: "", keywords: "" });
   const [editingId, setEditingId] = useState(null);
   const [msg, setMsg] = useState("");
 
@@ -63,12 +63,20 @@ export default function ExtendedClient() {
 
   const editSkill = (s) => {
     setEditingId(s.id);
-    setForm({ id: s.id, name: s.name, description: s.description || "", prompt: s.prompt_template || "", routingMode: !!s.routable });
+    setForm({
+      id: s.id,
+      name: s.name,
+      description: s.description || "",
+      prompt: s.prompt_template || "",
+      routingMode: !!s.routable,
+      triggers: (s.triggers || []).join(", "),
+      keywords: (s.keywords || []).join(", "),
+    });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setForm({ id: "", name: "", description: "", prompt: "", routingMode: false });
+    setForm({ id: "", name: "", description: "", prompt: "", routingMode: false, triggers: "", keywords: "" });
   };
 
   const saveSkill = async () => {
@@ -83,6 +91,8 @@ export default function ExtendedClient() {
             description: form.description,
             prompt_template: form.prompt,
             routable: form.routingMode,
+            triggers: form.triggers.split(",").map((t) => t.trim()).filter(Boolean),
+            keywords: form.keywords.split(",").map((t) => t.trim()).filter(Boolean),
           }),
         });
       } else {
@@ -96,6 +106,8 @@ export default function ExtendedClient() {
             prompt_template: form.prompt,
             hook: "system-prompt",
             routable: form.routingMode,
+            triggers: form.triggers.split(",").map((t) => t.trim()).filter(Boolean),
+            keywords: form.keywords.split(",").map((t) => t.trim()).filter(Boolean),
           }),
         });
       }
@@ -208,6 +220,18 @@ export default function ExtendedClient() {
             placeholder="prompt_template"
             value={form.prompt}
             onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
+            placeholder="triggers (pisahkan koma): review, kode, bug"
+            value={form.triggers}
+            onChange={(e) => setForm({ ...form, triggers: e.target.value })}
+          />
+          <input
+            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
+            placeholder="keywords (pisahkan koma): review, code, security"
+            value={form.keywords}
+            onChange={(e) => setForm({ ...form, keywords: e.target.value })}
           />
           <label className="flex items-center gap-2 text-[13px] cursor-pointer">
             <input

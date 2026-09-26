@@ -4,7 +4,7 @@ import { getSkillManifests } from "@/lib/skillsRegistry.js";
 import { buildTfIdfIndex, scoreQuery } from "./tfidf.js";
 
 const MAX_SKILLS_PER_REQUEST = 2;
-const DEFAULT_THRESHOLD = 0.5;
+const DEFAULT_THRESHOLD = 0.35;
 
 let cachedIndex = null;
 let cachedSignature = null;
@@ -70,18 +70,27 @@ export async function classifyRequestSkills(body, chatSettings = {}) {
 
   const byId = Object.fromEntries(routable.map((s) => [s.id, s]));
   const all = scoreQuery(index, queryText, { threshold: 0.01, maxSkills: Infinity });
+  const lowerQuery = queryText.toLowerCase();
 
-  return all
-    .filter((m) => {
-      const skill = byId[m.id];
-      if (!skill) return false;
+  return routable
+    .map((skill) => ({ skill, scored: all.find((m) => m.id === skill.id) }))
+    .filter(({ skill, scored }) => {
+      // Trigger substring = strong intent signal — accept regardless of TF-IDF score.
+      const triggerHit = (skill.triggers || []).some((t) => t && t.length > 2 && lowerQuery.includes(t.toLowerCase()));
+      if (triggerHit) return true;
+      if (!scored) return false;
       const threshold =
         chatSettings[`${skill.id}RoutingThreshold`] ??
         chatSettings[`${skill.id}_routing_threshold`] ??
         skill.routing_threshold ??
         DEFAULT_THRESHOLD;
-      return m.score >= threshold;
+      return scored.score >= threshold;
     })
     .slice(0, MAX_SKILLS_PER_REQUEST)
-    .map((m) => ({ id: m.id, name: m.name, score: m.score, prompt_template: byId[m.id].prompt_template }));
+    .map(({ skill, scored }) => ({
+      id: skill.id,
+      name: skill.name,
+      score: scored?.score ?? 1,
+      prompt_template: skill.prompt_template,
+    }));
 }
