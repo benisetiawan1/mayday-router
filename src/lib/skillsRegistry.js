@@ -91,7 +91,11 @@ export async function createCustomSkill(skillData) {
     hook: skillData.hook || "system-prompt",
     default_enabled: skillData.default_enabled !== false,
     source: skillData.source || "custom",
+    routable: skillData.routable === true,
   };
+
+  if (Array.isArray(skillData.triggers)) manifest.triggers = skillData.triggers;
+  if (Array.isArray(skillData.keywords)) manifest.keywords = skillData.keywords;
 
   if (Array.isArray(skillData.config_schema) && skillData.config_schema.length > 0) {
     manifest.config_schema = skillData.config_schema;

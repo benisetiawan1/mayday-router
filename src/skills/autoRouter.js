@@ -32,7 +32,7 @@ async function getRoutableSkills() {
     (s) =>
       s.hook === "system-prompt" &&
       s.prompt_template &&
-      !s.default_enabled === false &&
+      s.default_enabled !== false &&
       (s.routable === true || (Array.isArray(s.config_schema) && s.config_schema.some((c) => c.key === "routing_mode"))),
   );
 }
