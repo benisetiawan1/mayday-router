@@ -344,8 +344,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("SYSPROMPT", `default injected | ${finalFormat}`);
   }
 
-  // Caveman: inject terse-style system prompt
-  if (tokenSaverEnabled && cavemanEnabled && cavemanLevel) {
+  // Caveman: inject terse-style system prompt. Skipped when the request carries
+// tools (agent is working/grounding — terse style would suppress tool use).
+  const hasTools = Array.isArray(body?.tools) && body.tools.length > 0;
+  if (tokenSaverEnabled && cavemanEnabled && cavemanLevel && !hasTools) {
     injectCaveman(translatedBody, finalFormat, cavemanLevel);
     log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
   }
