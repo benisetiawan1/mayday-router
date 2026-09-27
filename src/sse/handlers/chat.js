@@ -525,7 +525,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       },
       extendedSkillRouterEnabled: chatSettings.extendedSkillRouterEnabled === true,
       extendedSkillDedupEnabled: chatSettings.extendedSkillDedupEnabled === true,
-      sessionId: request?.headers?.get("x-session-id") || null,
+      sessionId:
+        request?.headers?.get("x-session-id") ||
+        (apiKey ? `k:${Buffer.from(apiKey).toString("base64")}` : null),
     });
     } finally {
       // Always release the semaphore slot, even if handleChatCore throws

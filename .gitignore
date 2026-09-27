@@ -44,3 +44,6 @@ scripts/
 
 # Upstream repo untuk bahan perbandingan (bukan bagian build)
 references/
+
+# Lockfile generated on install (repo intentionally ships without one)
+package-lock.json
