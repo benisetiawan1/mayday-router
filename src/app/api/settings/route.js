@@ -11,8 +11,16 @@ const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
 
-// Secrets must never be mass-assigned from request body (CWE-915)
-const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
+// Secrets + auth-downgrade keys must never be mass-assigned from request body (CWE-915).
+// Changing these requires restart-level env/Db edits, not a PATCH.
+const PROTECTED_SETTING_KEYS = [
+  "password",
+  "mitmSudoEncrypted",
+  "requireLogin",
+  "requireApiKey",
+  "allowRemoteNoApiKey",
+  "tunnelDashboardAccess",
+];
 
 export async function GET() {
   try {
