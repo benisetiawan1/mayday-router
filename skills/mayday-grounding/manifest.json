@@ -1,0 +1,13 @@
+{
+  "id": "mayday-grounding",
+  "name": "Grounding (Anti-Hallucination)",
+  "description": "Tool-first, cite source, abstain — answer only from verified context, never fabricate.",
+  "version": "1.0.0",
+  "category": "prompt-injection",
+  "hook": "system-prompt",
+  "default_enabled": true,
+  "source": "builtin",
+  "routable": true,
+  "require_tools": true,
+  "triggers": ["review", "baca", "cek", "debug", "file", "kode", "code", "fix", "context", "konteks", "dokumentasi", "impl", "periksa", "cari", "analisa", "bug"]
+}

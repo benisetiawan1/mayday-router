@@ -364,6 +364,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     try {
       const matched = await classifyRequestSkills(body, settings || {});
       for (const skill of matched) {
+        if (skill.require_tools && !hasTools) continue;
         const already = extendedSkillDedupEnabled && markSkillInjected(sessionId, skill.id);
         const rawPrompt = already
           ? `(Previously provided skill "${skill.name}" is still active — continue following it.)`

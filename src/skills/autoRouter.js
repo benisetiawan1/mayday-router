@@ -93,5 +93,6 @@ export async function classifyRequestSkills(body, chatSettings = {}) {
       score: scored?.score ?? 1,
       prompt_template: skill.prompt_template,
       config_schema: skill.config_schema || [],
+      require_tools: skill.require_tools === true,
     }));
 }
