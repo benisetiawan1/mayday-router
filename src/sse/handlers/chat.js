@@ -91,12 +91,13 @@ export async function handleChat(request, clientRawRequest = null) {
   // Log request endpoint and model
   const url = new URL(request.url);
   const modelStr = body.model;
+  const intent = (request.headers.get("x-mayday-intent") || "").toLowerCase() || null;
 
   // Count messages (support both messages[] and input[] formats)
   const msgCount = body.messages?.length || body.input?.length || 0;
   const toolCount = body.tools?.length || 0;
   const effort = body.reasoning_effort || body.reasoning?.effort || null;
-  log.request("POST", `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`);
+  log.request("POST", `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}${intent ? ` | intent=${intent}` : ""}`);
 
   // Log API key (masked)
   const authHeader = request.headers.get("Authorization");
@@ -526,6 +527,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       extendedSkillRouterEnabled: chatSettings.extendedSkillRouterEnabled === true,
       extendedSkillDedupEnabled: chatSettings.extendedSkillDedupEnabled === true,
       settings: chatSettings,
+      intent,
       sessionId:
         request?.headers?.get("x-session-id") ||
         (apiKey ? `k:${Buffer.from(apiKey).toString("base64")}` : null),
