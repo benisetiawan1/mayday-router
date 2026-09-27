@@ -35,7 +35,7 @@ export default function ExtendedClient() {
   const [skills, setSkills] = useState([]);
   const [settings, setSettings] = useState({});
   const [hermes, setHermes] = useState({ memory: [], user: [] });
-  const [form, setForm] = useState({ id: "", name: "", description: "", prompt: "", routingMode: false, triggers: "", keywords: "" });
+  const [form, setForm] = useState({ id: "", name: "", description: "", prompt: "", routingMode: false, triggers: "", keywords: "", configSchema: "" });
   const [editingId, setEditingId] = useState(null);
   const [msg, setMsg] = useState("");
 
@@ -71,12 +71,13 @@ export default function ExtendedClient() {
       routingMode: !!s.routable,
       triggers: (s.triggers || []).join(", "),
       keywords: (s.keywords || []).join(", "),
+      configSchema: Array.isArray(s.config_schema) ? JSON.stringify(s.config_schema) : "",
     });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setForm({ id: "", name: "", description: "", prompt: "", routingMode: false, triggers: "", keywords: "" });
+    setForm({ id: "", name: "", description: "", prompt: "", routingMode: false, triggers: "", keywords: "", configSchema: "" });
   };
 
   const saveSkill = async () => {
@@ -93,6 +94,7 @@ export default function ExtendedClient() {
             routable: form.routingMode,
             triggers: form.triggers.split(",").map((t) => t.trim()).filter(Boolean),
             keywords: form.keywords.split(",").map((t) => t.trim()).filter(Boolean),
+            config_schema: form.configSchema.trim() ? JSON.parse(form.configSchema) : [],
           }),
         });
       } else {
@@ -108,6 +110,7 @@ export default function ExtendedClient() {
             routable: form.routingMode,
             triggers: form.triggers.split(",").map((t) => t.trim()).filter(Boolean),
             keywords: form.keywords.split(",").map((t) => t.trim()).filter(Boolean),
+            config_schema: form.configSchema.trim() ? JSON.parse(form.configSchema) : [],
           }),
         });
       }
@@ -233,6 +236,13 @@ export default function ExtendedClient() {
             value={form.keywords}
             onChange={(e) => setForm({ ...form, keywords: e.target.value })}
           />
+          <textarea
+            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px] font-mono"
+            rows={3}
+            placeholder='config_schema (JSON): [{"key":"variance","label":"Variance","min":0,"max":1,"default":0.5}]'
+            value={form.configSchema}
+            onChange={(e) => setForm({ ...form, configSchema: e.target.value })}
+          />
           <label className="flex items-center gap-2 text-[13px] cursor-pointer">
             <input
               type="checkbox"
@@ -267,6 +277,23 @@ export default function ExtendedClient() {
                 <div className="min-w-0">
                   <p className="text-[13px] font-medium truncate">{s.name} <span className="text-muted font-normal">({s.id})</span></p>
                   <p className="text-[12px] text-muted truncate">{s.description}</p>
+                  {Array.isArray(s.config_schema) && s.config_schema.map((c) => (
+                    <div key={c.key} className="mt-1 flex items-center gap-2">
+                      <span className="text-[11px] text-muted w-28 truncate">{c.label || c.key}</span>
+                      <input
+                        type="range"
+                        min={c.min ?? 0}
+                        max={c.max ?? 1}
+                        step={c.step ?? 0.05}
+                        value={settings[`ext_${s.id}_${c.key}`] ?? c.default ?? 0}
+                        onChange={(e) => patchSetting(`ext_${s.id}_${c.key}`, Number(e.target.value))}
+                        className="flex-1 accent-primary"
+                      />
+                      <span className="text-[11px] tabular-nums w-8">
+                        {settings[`ext_${s.id}_${c.key}`] ?? c.default ?? 0}
+                      </span>
+                    </div>
+                  ))}
                 </div>
                 <button
                   type="button"

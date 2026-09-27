@@ -92,5 +92,6 @@ export async function classifyRequestSkills(body, chatSettings = {}) {
       name: skill.name,
       score: scored?.score ?? 1,
       prompt_template: skill.prompt_template,
+      config_schema: skill.config_schema || [],
     }));
 }

@@ -41,6 +41,18 @@ import { markPoolUnfit } from "../services/proxyPoolFitness.js";
 const MAX_POOL_RETRIES = 2;
 const TOOL_PROTOCOL_PROMPT_PROVIDERS = new Set(["kimchi", "nvidia"]);
 
+function interpolateSkillSliders(template, skill, settings) {
+  if (!template || typeof template !== "string") return template;
+  const schema = skill?.config_schema || [];
+  if (schema.length === 0 || !settings) return template;
+  return template.replace(/\{(\w+)\}/g, (match, key) => {
+    const entry = schema.find((c) => c.key === key);
+    if (!entry) return match;
+    const resolved = settings[`ext_${skill.id}_${key}`];
+    return resolved !== undefined && resolved !== null ? String(resolved) : String(entry.default ?? match);
+  });
+}
+
 export function needsTerminationPrompt(provider, model) {
   return /(?:^|[/_-])kimi(?:[/_-]|$)|(?:^|[/_-])kimi-k2\.(?:6|7)(?:\b|[-_/])/i.test(`${provider}/${model}`);
 }
@@ -127,7 +139,7 @@ export function stripContinuityFields(body) {
   return body;
 }
 
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, apiKeyInfo = null, apiKeyName = null, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs = 3000, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars = 1000, pxpipeTimeoutMs = 10000, pxpipeTransform = "png", onPxpipeEvent = null, sourceFormatOverride, providerThinking, clientSignal, loopGuardEnabled = true, systemPrompt = null, clientModelId = null, resolveProxyConfig = null, extendedSkillRouterEnabled = false, extendedSkillDedupEnabled = false, sessionId = null }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, apiKeyInfo = null, apiKeyName = null, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs = 3000, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars = 1000, pxpipeTimeoutMs = 10000, pxpipeTransform = "png", onPxpipeEvent = null, sourceFormatOverride, providerThinking, clientSignal, loopGuardEnabled = true, systemPrompt = null, clientModelId = null, resolveProxyConfig = null, extendedSkillRouterEnabled = false, extendedSkillDedupEnabled = false, sessionId = null, settings = null }) {
   const { provider, model, accountCount = 0 } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -348,12 +360,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // matched manifest-driven skill prompts. Fail-open, default OFF.
   if (tokenSaverEnabled && extendedSkillRouterEnabled) {
     try {
-      const matched = await classifyRequestSkills(body, {});
+      const matched = await classifyRequestSkills(body, settings || {});
       for (const skill of matched) {
         const already = extendedSkillDedupEnabled && markSkillInjected(sessionId, skill.id);
-        const prompt = already
+        const rawPrompt = already
           ? `(Previously provided skill "${skill.name}" is still active — continue following it.)`
           : skill.prompt_template;
+        const prompt = interpolateSkillSliders(rawPrompt, skill, settings);
         if (prompt) {
           injectSystemPrompt(translatedBody, finalFormat, prompt);
           log?.info?.("SKILLROUTER", `${skill.id} (score ${skill.score}, ${already ? "reminder" : "full"})`);

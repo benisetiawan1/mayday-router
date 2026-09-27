@@ -525,6 +525,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       },
       extendedSkillRouterEnabled: chatSettings.extendedSkillRouterEnabled === true,
       extendedSkillDedupEnabled: chatSettings.extendedSkillDedupEnabled === true,
+      settings: chatSettings,
       sessionId:
         request?.headers?.get("x-session-id") ||
         (apiKey ? `k:${Buffer.from(apiKey).toString("base64")}` : null),
