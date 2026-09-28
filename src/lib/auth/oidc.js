@@ -62,7 +62,41 @@ export async function getOidcRuntimeConfig() {
   };
 }
 
+function isPrivateBlockedHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  if (h === "localhost" || h === "::1" || h.endsWith(".localhost")) return true;
+  if (h === "169.254.169.254" || h === "[fd00:ec2::254]") return true; // cloud metadata
+  const family = h.startsWith("[") ? 6 : 4;
+  const raw = h.replace(/^\[|\]$/g, "");
+  const octets = raw.split(".").map(Number);
+  if (family === 4 && octets.length === 4 && octets.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+    if (octets[0] === 127 || octets[0] === 0 || octets[0] === 10) return true;
+    if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+    if (octets[0] === 192 && octets[1] === 168) return true;
+    if (octets[0] === 169 && octets[1] === 254) return true;
+  }
+  return false;
+}
+
+function assertSafeIssuerUrl(issuerUrl) {
+  let u;
+  try {
+    u = new URL(issuerUrl);
+  } catch {
+    throw new Error("Invalid OIDC issuer URL");
+  }
+  if (u.protocol !== "https:") {
+    throw new Error("OIDC issuer URL must use https");
+  }
+  if (isPrivateBlockedHost(u.hostname)) {
+    throw new Error("OIDC issuer URL points to a private/internal host");
+  }
+  // ponytail: hostname-only check; DNS-rebinding TOCTOU remains a residual risk
+  // (block at fetch level if a full allowlist of public issuers is introduced).
+}
+
 export async function fetchOidcDiscovery(issuerUrl) {
+  assertSafeIssuerUrl(issuerUrl);
   const discoveryUrl = `${trimTrailingSlashes(issuerUrl)}/.well-known/openid-configuration`;
   const res = await fetch(discoveryUrl, { cache: "no-store" });
   if (!res.ok) {
