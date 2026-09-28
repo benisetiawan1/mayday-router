@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { verifyDashboardAuthToken, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
@@ -45,6 +45,10 @@ const ALWAYS_PROTECTED = [
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
 ];
+
+// Routes that write/read host CLI credential files — allow remote only when the
+// request also carries a verified dashboard password (re-auth) header.
+const SENSITIVE_REAUTH_PATHS = ["/api/cli-tools"];
 
 const PROTECTED_API_PATHS = [
   "/api/settings",
@@ -280,8 +284,18 @@ export async function proxy(request) {
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
-    if (await hasValidCliToken(request) || await isAuthenticated(request))
-      return NextResponse.next();
+    if (await hasValidCliToken(request)) return NextResponse.next();
+    const isSensitive = SENSITIVE_REAUTH_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+    if (isSensitive) {
+      // CLI credential read/write routes: remote access needs auth + password re-auth.
+      const reauthPassword = request.headers.get("x-mayday-password");
+      if (await isAuthenticated(request) && reauthPassword && (await verifyDashboardPassword(reauthPassword))) {
+        return NextResponse.next();
+      }
+      console.log(`[dashboardGuard] ${pathname} blocked: sensitive route requires password re-auth (host=${request.headers.get("host") || ""})`);
+      return NextResponse.json({ error: "Password re-authentication required" }, { status: 401 });
+    }
+    if (await isAuthenticated(request)) return NextResponse.next();
     console.log(`[dashboardGuard] ${pathname} blocked: not authenticated (host=${request.headers.get("host") || ""})`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
