@@ -17,9 +17,12 @@ export const GITHUB_CONFIG = {
 // Updater configuration
 export const UPDATER_CONFIG = {
   npmPackageName: "mayday",
-  deployMode: true, // Docker/self-host: update via deploy script, bukan npm global
-  installCmd: "bash scripts/deploy-mayday-router.sh",
-  installCmdLatest: "bash scripts/deploy-mayday-router.sh  # git pull -> docker build -> backup DB -> swap container",
+  deployMode: true, // Docker/self-host: tarball self-update or image rebuild, not npm global
+  // Manual fallback command for Docker installs (shown in the update dialog)
+  installCmd: "docker build -t mayday-router . && docker stop mayday-router && docker rm mayday-router && docker run -d --name mayday-router --restart always -p 20128:20128 -v mayday-data:/app/data mayday-router",
+  installCmdLatest: "docker build -t mayday-router . && docker stop mayday-router && docker rm mayday-router && docker run -d --name mayday-router --restart always -p 20128:20128 -v mayday-data:/app/data mayday-router",
+  // GitHub release channel for the one-click tarball updater
+  githubRepo: "benisetiawan1/mayday-router",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,

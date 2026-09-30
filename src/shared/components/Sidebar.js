@@ -10,6 +10,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 import NineRemotePromoModal from "./NineRemotePromoModal";
+import UpdateModal from "./UpdateModal";
 import ThemeToggle from "./ThemeToggle";
 import HeaderLanguage from "./HeaderLanguage";
 import HeaderMenu from "./HeaderMenu";
@@ -48,6 +49,7 @@ export default function Sidebar({ onClose }) {
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showUpdateNowModal, setShowUpdateNowModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
   const [enableTranslator, setEnableTranslator] = useState(false);
@@ -154,7 +156,18 @@ export default function Sidebar({ onClose }) {
           {updateInfo && (
             <>
               <button
-                onClick={() => setShowUpdateModal(true)}
+                onClick={async () => {
+                  // tarball installs get the one-click updater; docker/npm keep the manual flow
+                  try {
+                    const res = await fetch("/api/update/status", { cache: "no-store" });
+                    const s = await res.json();
+                    if (s.installMode === "tarball") {
+                      setShowUpdateNowModal(true);
+                      return;
+                    }
+                  } catch { /* fall through to manual flow */ }
+                  setShowUpdateModal(true);
+                }}
                 className="tag g cursor-pointer"
                 title="Update available"
               >
@@ -288,6 +301,11 @@ export default function Sidebar({ onClose }) {
 
       <NineRemotePromoModal isOpen={showRemoteModal} onClose={() => setShowRemoteModal(false)} />
       <DonateModal isOpen={donateOpen} onClose={() => setDonateOpen(false)} />
+      <UpdateModal
+        isOpen={showUpdateNowModal}
+        onClose={() => setShowUpdateNowModal(false)}
+        latestVersion={updateInfo?.latestVersion}
+      />
 
       <ConfirmModal
         isOpen={showUpdateModal}

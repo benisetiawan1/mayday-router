@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Package standalone bundle
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#v}"
+          STAGE="release-stage"
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+          # standalone server bundle (self-contained node_modules subset)
+          cp -r .next/standalone/. "$STAGE"/
+          cp -r public "$STAGE"/public
+          mkdir -p "$STAGE"/.next
+          cp -r .next/static "$STAGE"/.next/static
+          cp custom-server.js "$STAGE"/custom-server.js
+          cp package.json "$STAGE"/package.json
+          [ -d skills ] && cp -r skills "$STAGE"/skills || true
+          TARBALL="mayday-router-${VER}-linux-x64.tar.gz"
+          tar -czf "$TARBALL" -C "$STAGE" .
+          sha256sum "$TARBALL" | awk '{print $1}' > "$TARBALL.sha256"
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+          ls -la "$TARBALL" "$TARBALL.sha256"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Mayday Router ${GITHUB_REF_NAME}" \
+            --notes-file CHANGELOG.md \
+            --prerelease \
+            "$TARBALL" "$TARBALL.sha256" \
+          || gh release upload "${GITHUB_REF_NAME}" "$TARBALL" "$TARBALL.sha256" --clobber
