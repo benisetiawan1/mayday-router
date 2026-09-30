@@ -753,17 +753,17 @@ export default function BasicChatPageClient() {
   return (
     <div className="relative flex-1 flex flex-col h-full min-h-0 min-w-0 bg-bg text-text-main overflow-hidden">
       <div className="relative flex flex-1 h-full min-h-0 w-full flex-col">
-        <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 lg:px-6">
-          <div ref={modelMenuRef} className="relative">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-3 lg:px-6">
+          <div ref={modelMenuRef} className="relative min-w-0 max-w-full">
             <button
               type="button"
               onClick={() => setModelMenuOpen((value) => !value)}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-surface-2 px-4 py-3 text-left transition hover:bg-surface-3"
+              className="flex max-w-[56vw] items-center gap-2 rounded-2xl border border-border bg-surface-2 px-3 py-2 text-left transition hover:bg-surface-3 sm:max-w-none sm:px-4 sm:py-3"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-text-main">{modelLabel}</span>
-                  <span className="material-symbols-outlined text-[18px] text-text-main">expand_more</span>
+                  <span className="truncate text-sm font-semibold text-text-main">{modelLabel}</span>
+                  <span className="material-symbols-outlined text-[18px] shrink-0 text-text-main">expand_more</span>
                 </div>
                 <p className="truncate text-xs text-text-muted">{modelSubLabel}</p>
               </div>
@@ -814,7 +814,7 @@ export default function BasicChatPageClient() {
             <button
               type="button"
               onClick={() => setHistoryOpen((value) => !value)}
-              className="rounded-2xl border border-border bg-surface-2 px-4 py-3 text-sm text-text-main transition hover:bg-surface-3"
+              className="rounded-2xl border border-border bg-surface-2 px-3 py-2 text-sm text-text-main transition hover:bg-surface-3 sm:px-4 sm:py-3"
             >
               History
             </button>

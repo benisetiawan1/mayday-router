@@ -892,6 +892,7 @@ button:disabled,
   .panel:has(.row.head) .row { min-width: 600px; }
 }
 @media (max-width: 640px) {
+  .banner { font-size: 11px; padding: 8px 10px; margin: 10px 10px 0; }
   .cr-topbar .chip { display: none; }
   /* update pill + install-command chip take too much width on mobile */
   .cr-topbar .right .tag, .cr-topbar .right .chip { display: none; }

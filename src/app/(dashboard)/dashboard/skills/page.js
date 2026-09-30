@@ -28,7 +28,7 @@ function SkillCard({ skill }) {
   return (
     <div
       className="pcard"
-      style={skill.isEntry ? { background: "var(--cr-accent-dim)" } : undefined}
+      style={skill.isEntry ? { boxShadow: "inset 0 0 0 1px var(--cr-accent-line)" } : undefined}
     >
       <div className="top">
         <div

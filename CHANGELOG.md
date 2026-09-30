@@ -3,6 +3,15 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), versions are pre-1.0 betas.
 
+## 0.32.0-beta (2026-09-30)
+
+### Fixed — mobile UI
+- Basic chat header: model selector, History, and Clear buttons now wrap and
+  truncate correctly on narrow screens instead of overflowing off-canvas.
+- Skills: the "Paste this to your AI" banner is compact on small screens, and
+  the entry skill card uses a subtle accent outline instead of a heavy filled
+  background.
+
 ## 0.31.0-beta (2026-09-30)
 
 ### Added — Docker self-update (path A)
