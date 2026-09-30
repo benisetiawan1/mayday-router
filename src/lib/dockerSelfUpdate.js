@@ -78,7 +78,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // never a hardcoded name/port — so the guidance is correct for every install.
 export async function buildManualDockerCommand() {
   const id = selfContainerId();
-  const inspect = await dockerApi("GET", `/containers/${id}/json`);
+  let inspect;
+  try {
+    inspect = await dockerApi("GET", `/containers/${id}/json`);
+  } catch {
+    inspect = { status: 0 }; // no docker socket / not in docker — use fallback
+  }
   if (inspect.status !== 200) {
     // no docker socket: build from what the process knows (port + optional name)
     const port = process.env.PORT || "20128";
