@@ -74,6 +74,42 @@ function selfContainerId() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Build the manual update command from THIS running container's real config —
+// never a hardcoded name/port — so the guidance is correct for every install.
+export async function buildManualDockerCommand() {
+  const id = selfContainerId();
+  const inspect = await dockerApi("GET", `/containers/${id}/json`);
+  if (inspect.status !== 200) return null;
+  const cfg = inspect.body;
+  const name = (cfg.Name || SELF_NAME).replace(/^\//, "");
+  const parts = [`docker stop ${name}`, `docker rm ${name}`];
+  let run = `docker run -d --name ${name}`;
+  const restart = cfg.HostConfig?.RestartPolicy?.Name;
+  if (restart) run += ` --restart ${restart}`;
+  const ports = cfg.HostConfig?.PortBindings || {};
+  for (const [containerPort, bindings] of Object.entries(ports)) {
+    for (const b of bindings || []) run += ` -p ${b.HostPort}:${containerPort.replace("/tcp", "")}`;
+  }
+  const skipEnv = new Set(["PATH", "NODE_VERSION", "YARN_VERSION", "HOSTNAME", "HOME"]);
+  for (const e of cfg.Config?.Env || []) {
+    const k = e.split("=")[0];
+    if (!skipEnv.has(k)) run += ` -e ${k}="..."`;
+  }
+  for (const m of cfg.Mounts || []) {
+    if (m.Type === "bind") run += ` -v ${m.Source}:${m.Destination}`;
+  }
+  const networks = Object.keys(cfg.NetworkSettings?.Networks || {}).filter((n) => n !== "bridge");
+  if (networks.length) run += ` --network ${networks[0]}`;
+  run += ` ${IMAGE}`;
+  const extra = networks.slice(1).map((n) => `docker network connect ${n} ${name}`);
+  return [
+    `docker build -t ${IMAGE} .   # or: docker pull ${IMAGE}`,
+    ...parts,
+    run,
+    ...extra,
+  ].join(" && \n  ");
+}
+
 export async function startDockerSelfUpdate(targetVersion) {
   if (state.phase !== "idle" && state.phase !== "done" && state.phase !== "error") {
     throw new Error("An update is already in progress");

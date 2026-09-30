@@ -157,14 +157,16 @@ export default function Sidebar({ onClose }) {
             <>
               <button
                 onClick={async () => {
-                  // tarball installs get the one-click updater; docker/npm keep the manual flow
+                  // one-click updater for tarball installs AND docker with self-update enabled;
+                  // otherwise the manual flow with a command built from THIS install's real config
                   try {
                     const res = await fetch("/api/update/status", { cache: "no-store" });
                     const s = await res.json();
-                    if (s.installMode === "tarball") {
+                    if (s.installMode === "tarball" || (s.installMode === "docker" && s.selfUpdate)) {
                       setShowUpdateNowModal(true);
                       return;
                     }
+                    if (s.manualCommand) setUpdateInfo((prev) => ({ ...prev, installCommand: s.manualCommand }));
                   } catch { /* fall through to manual flow */ }
                   setShowUpdateModal(true);
                 }}
