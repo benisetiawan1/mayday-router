@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Input, Select, Toggle } from "@/shared/components";
+import { Button, Input, Select, Toggle } from "@/shared/components";
 import { AI_PROVIDERS, AUTH_METHODS } from "@/shared/constants/config";
 
 const providerOptions = Object.values(AI_PROVIDERS).map((p) => ({
@@ -90,8 +90,11 @@ export default function NewProviderPage() {
       </div>
 
       {/* Form */}
-      <Card>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>01</b> · Add New Provider</span>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6 px-4 py-4">
           {/* Provider Selection */}
           <Select
             label="Provider"
@@ -105,7 +108,7 @@ export default function NewProviderPage() {
 
           {/* Provider Info */}
           {selectedProvider && (
-            <Card.Section className="flex items-center gap-3">
+            <div className="flex items-center gap-3 rounded-[4px] bg-bg border border-border p-4">
               <div
                 className="size-10 rounded-lg flex items-center justify-center bg-bg border border-border"
               >
@@ -116,13 +119,13 @@ export default function NewProviderPage() {
                   {selectedProvider.icon}
                 </span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-medium">{selectedProvider.name}</p>
                 <p className="text-sm text-text-muted">
                   Selected provider
                 </p>
               </div>
-            </Card.Section>
+            </div>
           )}
 
           {/* Auth Method */}
@@ -167,14 +170,14 @@ export default function NewProviderPage() {
 
           {/* OAuth2 Button */}
           {formData.authMethod === "oauth2" && (
-            <Card.Section>
+            <div className="rounded-[4px] bg-bg border border-border p-4">
               <p className="text-sm text-text-muted mb-4">
                 Connect your account using OAuth2 authentication.
               </p>
               <Button type="button" variant="secondary" icon="link">
                 Connect with OAuth2
               </Button>
-            </Card.Section>
+            </div>
           )}
 
           {/* Display Name */}
@@ -213,7 +216,7 @@ export default function NewProviderPage() {
             </Button>
           </div>
         </form>
-      </Card>
+      </div>
     </div>
   );
 }

@@ -4,23 +4,24 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/shared/utils/cn";
-import { APP_CONFIG, UPDATER_CONFIG, GITHUB_CONFIG } from "@/shared/constants/config";
+import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 import NineRemotePromoModal from "./NineRemotePromoModal";
-import ChangelogModal from "./ChangelogModal";
+import ThemeToggle from "./ThemeToggle";
+import HeaderLanguage from "./HeaderLanguage";
+import HeaderMenu from "./HeaderMenu";
+import DonateModal from "./DonateModal";
+import { HeaderSearch } from "./Header";
 
-// const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
 const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt"];
-// Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
   { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns" },
-  // { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" }, // Hidden
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
@@ -42,33 +43,51 @@ const systemItems = [
 
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
-  const [mediaOpen, setMediaOpen] = useState(false);
+  const [sysOpen, setSysOpen] = useState(false);
   const [showRemoteModal, setShowRemoteModal] = useState(false);
-  const [showChangelogModal, setShowChangelogModal] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
   const [enableTranslator, setEnableTranslator] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
   const { copied, copy } = useCopyToClipboard(2000);
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (res.ok) window.location.assign("/login");
+    } catch { /* logout failed */ }
+  };
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
 
   useEffect(() => {
     fetch("/api/settings")
-      .then(res => res.json())
-      .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
+      .then((res) => res.json())
+      .then((data) => { if (data.enableTranslator) setEnableTranslator(true); })
       .catch(() => {});
   }, []);
 
-  // Lazy check for new npm version on mount
   useEffect(() => {
     fetch("/api/version")
-      .then(res => res.json())
-      .then(data => { if (data.hasUpdate) setUpdateInfo(data); })
+      .then((res) => res.json())
+      .then((data) => { if (data.hasUpdate) setUpdateInfo(data); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!sysOpen) return;
+    const onEsc = (e) => { if (e.key === "Escape") setSysOpen(false); };
+    const onClick = (e) => { if (!e.target.closest("[data-sys-menu]")) setSysOpen(false); };
+    document.addEventListener("keydown", onEsc);
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("keydown", onEsc);
+      document.removeEventListener("click", onClick);
+    };
+  }, [sysOpen]);
 
   const isActive = (href) => {
     if (href === "/dashboard/endpoint") {
@@ -77,13 +96,11 @@ export default function Sidebar({ onClose }) {
     return pathname.startsWith(href);
   };
 
-  // Open manual update panel (no countdown yet — user must click Copy to trigger shutdown)
   const handleUpdate = () => {
     setShowUpdateModal(false);
     setIsUpdating(true);
   };
 
-  // Triggered by Copy button inside ManualUpdatePanel: copy + countdown + shutdown
   const handleCopyAndShutdown = async () => {
     try { await navigator.clipboard.writeText(INSTALL_CMD); } catch { /* clipboard blocked */ }
     copy(INSTALL_CMD);
@@ -105,251 +122,173 @@ export default function Sidebar({ onClose }) {
     setShutdownCountdown(0);
   };
 
-  // Note: legacy updater poll removed. New flow: copy install cmd + shutdown server,
-  // user runs the command manually in another terminal.
-
+  const sysActive =
+    pathname.startsWith("/dashboard/media-providers") ||
+    pathname.startsWith("/dashboard/proxy") ||
+    pathname.startsWith("/dashboard/skills") ||
+    pathname.startsWith("/dashboard/extended") ||
+    pathname.startsWith("/dashboard/console-log") ||
+    pathname.startsWith("/dashboard/translator") ||
+    pathname.startsWith("/dashboard/profile") ||
+    pathname.startsWith("/dashboard/pxpipe") ||
+    pathname.startsWith("/dashboard/mitm") ||
+    pathname.startsWith("/dashboard/basic-chat");
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
-        {/* Traffic lights */}
-        <div className="flex items-center gap-2 px-6 pt-5 pb-2">
-          <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
-          <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
-          <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
+      {/* Control Room v3 topbar */}
+      <div className="cr-topbar relative z-30">
+        <Link href="/dashboard" className="cr-brand">
+          <div className="cr-brand-block">M</div>
+          <div className="cr-brand-name">
+            {APP_CONFIG.name} <em>Control</em>
+          </div>
+        </Link>
+        <span className="chip">v{APP_CONFIG.version}</span>
+        <div className="cr-live hidden md:flex">
+          <span className="led ok pulse"></span>
+          <span className="txt">Operational</span>
         </div>
 
-        {/* Logo */}
-        <div className="px-6 py-4 flex flex-col gap-2">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
-              <span className="material-symbols-outlined text-white text-[20px]">hub</span>
-            </div>
-            <div className="flex flex-col">
-              <h1 className="text-lg font-semibold tracking-tight text-text-main">
-                {APP_CONFIG.name}
-              </h1>
-              <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
-            </div>
-          </Link>
+        <div className="right">
           {updateInfo && (
-            <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
-              <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
-                ↑ New version available: v{updateInfo.latestVersion}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowUpdateModal(true)}
-                  className="px-2 py-1 rounded bg-green-600 hover:bg-green-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors cursor-pointer"
-                >
-                  {updateInfo.canAutoRestart ? "Update & Restart" : "Update now"}
-                </button>
-                <button
-                  onClick={() => copy(updateInfo.installCommand || INSTALL_CMD)}
-                  title="Copy install command"
-                  className="flex-1 text-left hover:opacity-80 transition-opacity cursor-pointer min-w-0"
-                >
-                  <code className="block text-[10px] text-green-600/80 dark:text-amber-400/70 font-mono truncate">
-                    {copied ? "✓ copied!" : (updateInfo.installCommand || INSTALL_CMD)}
-                  </code>
-                </button>
-              </div>
-              <div className="flex items-center mt-0.5">
-                <button
-                  type="button"
-                  onClick={() => setShowChangelogModal(true)}
-                  className="text-[10px] text-green-600/80 hover:text-green-700 dark:text-amber-500/80 dark:hover:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[12px]">description</span>
-                  Check new changelog
-                </button>
-              </div>
-            </div>
+            <>
+              <button
+                onClick={() => setShowUpdateModal(true)}
+                className="tag g cursor-pointer"
+                title="Update available"
+              >
+                ↑ v{updateInfo.latestVersion}
+              </button>
+              <button
+                onClick={() => copy(updateInfo.installCommand || INSTALL_CMD)}
+                title="Copy install command"
+                className="chip cursor-pointer hover:border-brand-500/40 min-w-0 max-w-[220px]"
+              >
+                <code className="block truncate">
+                  {copied ? "✓ copied!" : (updateInfo.installCommand || INSTALL_CMD)}
+                </code>
+              </button>
+            </>
           )}
+          <HeaderSearch />
+          <button
+            type="button"
+            onClick={() => setDonateOpen(true)}
+            className="tbtn"
+            aria-label="Donate Me :3"
+            title="Donate"
+          >
+            ♥
+          </button>
+          <HeaderLanguage />
+          <ThemeToggle />
+          <HeaderMenu onLogout={handleLogout} />
         </div>
+      </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+      {/* Control Room v3 tabrow — tabs scroll in their own container so the
+          SYSTEM dropdown is never clipped by overflow-x */}
+      <div className="cr-tabrow relative z-20">
+        <div className="cr-tabs-scroll">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
+              className={cn("cr-tab", isActive(item.href) && "active")}
             >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
-              >
-                {item.icon}
-              </span>
-              <span className="text-[13px] font-medium">{item.label}</span>
+              {item.label}
             </Link>
           ))}
+        </div>
 
-          {/* System section */}
-          <div className="pt-3 mt-2 space-y-0.5">
-            <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
-              System
-            </p>
+        {/* System dropdown */}
+        <div className="cr-sys-wrap" data-sys-menu>
+          <button
+            onClick={() => setSysOpen((v) => !v)}
+            className={cn("cr-tab", (sysOpen || sysActive) && "active")}
+          >
+            System ▾
+          </button>
 
-            {/* Media Providers accordion */}
-            <button
-              onClick={() => setMediaOpen((v) => !v)}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                pathname.startsWith("/dashboard/media-providers")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span className="material-symbols-outlined text-[18px]">perm_media</span>
-              <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
-              <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
-                expand_more
-              </span>
-            </button>
-            {mediaOpen && (
-              <div className="pl-4">
-                {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
-                  <Link
-                    key={kind.id}
-                    href={`/dashboard/media-providers/${kind.id}`}
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                      pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
-                        ? "bg-primary/10 text-primary"
-                        : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                    )}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
-                    <span className="text-sm">{kind.label}</span>
-                  </Link>
-                ))}
+          {sysOpen && (
+            <div className="cr-sys-menu">
+              <div className="cr-sys-label">Media Providers</div>
+              {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
                 <Link
-                  key={COMBINED_WEB_ITEM.id}
-                  href={COMBINED_WEB_ITEM.href}
-                  onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                    pathname.startsWith(COMBINED_WEB_ITEM.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                  )}
+                  key={kind.id}
+                  href={`/dashboard/media-providers/${kind.id}`}
+                  onClick={() => setSysOpen(false)}
+                  className="cr-sys-item"
                 >
-                  <span className="material-symbols-outlined text-[16px]">{COMBINED_WEB_ITEM.icon}</span>
-                  <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
+                  <span>{kind.label}</span>
                 </Link>
-              </div>
-            )}
-
-            {systemItems.map((item) => (
+              ))}
               <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                )}
+                href={COMBINED_WEB_ITEM.href}
+                onClick={() => setSysOpen(false)}
+                className="cr-sys-item"
               >
-                <span
-                  className={cn(
-                    "material-symbols-outlined text-[18px]",
-                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                  )}
-                >
-                  {item.icon}
-                </span>
-                <span className="text-[13px] font-medium">{item.label}</span>
+                <span>{COMBINED_WEB_ITEM.label}</span>
               </Link>
-            ))}
 
-            {/* Debug items (inside System section, before Settings) */}
-            {debugItems.map((item) => {
-              const show = item.href !== "/dashboard/translator" || enableTranslator;
-              return show ? (
+              <div className="cr-sys-label">System</div>
+              {systemItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                    isActive(item.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                  )}
+                  onClick={() => setSysOpen(false)}
+                  className="cr-sys-item"
                 >
-                  <span
-                    className={cn(
-                      "material-symbols-outlined text-[18px]",
-                      isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                    )}
-                  >
-                    {item.icon}
-                  </span>
-                  <span className="text-[13px] font-medium">{item.label}</span>
+                  <span>{item.label}</span>
                 </Link>
-              ) : null;
-            })}
-
-            {/* Remote */}
-            <button
-              onClick={() => setShowRemoteModal(true)}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
-                "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">
-                computer
-              </span>
-              <span className="text-[13px] font-medium">Remote</span>
-            </button>
-
-            {/* Settings */}
-            <Link
-              href="/dashboard/profile"
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive("/dashboard/profile")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
+              ))}
+              {debugItems.map((item) => {
+                const show = item.href !== "/dashboard/translator" || enableTranslator;
+                return show ? (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setSysOpen(false)}
+                    className="cr-sys-item"
+                  >
+                    <span>{item.label}</span>
+                  </Link>
+                ) : null;
+              })}
+              <button
+                onClick={() => { setShowRemoteModal(true); setSysOpen(false); }}
+                className="cr-sys-item"
               >
-                settings
-              </span>
-              <span className="text-[13px] font-medium">Settings</span>
-            </Link>
-          </div>
-        </nav>
+                <span>Remote</span>
+              </button>
+              <Link
+                href="/dashboard/profile"
+                onClick={() => setSysOpen(false)}
+                className="cr-sys-item"
+              >
+                <span>Settings</span>
+              </Link>
 
-      </aside>
+              <div className="cr-sys-label">Hidden routes</div>
+              <Link href="/dashboard/pxpipe" onClick={() => setSysOpen(false)} className="cr-sys-item hid">
+                <span>PXPipe</span><span className="k">off-nav</span>
+              </Link>
+              <Link href="/dashboard/mitm" onClick={() => setSysOpen(false)} className="cr-sys-item hid">
+                <span>MITM</span><span className="k">off-nav</span>
+              </Link>
+              <Link href="/dashboard/basic-chat" onClick={() => setSysOpen(false)} className="cr-sys-item hid">
+                <span>Basic Chat</span><span className="k">off-nav</span>
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
 
-      {/* Remote Promo Modal */}
       <NineRemotePromoModal isOpen={showRemoteModal} onClose={() => setShowRemoteModal(false)} />
+      <DonateModal isOpen={donateOpen} onClose={() => setDonateOpen(false)} />
 
-      {/* Changelog Modal */}
-      <ChangelogModal isOpen={showChangelogModal} onClose={() => setShowChangelogModal(false)} />
-
-      {/* Update Confirmation Modal */}
       <ConfirmModal
         isOpen={showUpdateModal}
         onClose={() => setShowUpdateModal(false)}
@@ -361,7 +300,6 @@ export default function Sidebar({ onClose }) {
         variant="primary"
       />
 
-      {/* Disconnected / Updating Overlay */}
       {(isDisconnected || isUpdating) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
           {isUpdating ? (
@@ -391,7 +329,6 @@ export default function Sidebar({ onClose }) {
     </>
   );
 }
-
 
 function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdown, onCancel, countdown, isDisconnected }) {
   const isCountingDown = countdown > 0;
@@ -441,4 +378,3 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
     </div>
   );
 }
-

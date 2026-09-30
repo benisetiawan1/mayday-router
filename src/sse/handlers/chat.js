@@ -32,6 +32,7 @@ import {
 import { getProxyHash, resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
 import { updateProviderConnection, getProviderConnections } from "@/lib/localDb";
 import { isModelAllowed } from "../services/allowedModels.js";
+import { liveStart, liveRouted, liveEnd, liveFallback, instrumentResponseStream } from "@/lib/liveRequests.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -287,6 +288,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { provider, model } = modelInfo;
 
+  // Live-flow registry: one row per real request attempt (fallback re-uses the
+  // same row so the UI shows ROUTE → 403→FB → ROUTE on the same line).
+  const liveId = crypto.randomUUID();
+  liveStart({ id: liveId, model, provider });
+
   // ACL: check if provider is allowed for this API key
   if (!(await isProviderAllowed(apiKeyInfo, provider))) {
     log.warn("AUTH", `Provider "${provider}" not allowed for API key`, { provider });
@@ -366,6 +372,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // connection.
     if (request?.signal?.aborted) {
       log.info("CHAT", `[${provider}/${model}] client disconnected — aborting fallback loop`);
+      liveEnd(liveId, { status: "aborted" });
       return withSelectedConnectionHeader(new Response(null, { status: 499 }), lastExcludedConnectionId);
     }
 
@@ -405,12 +412,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       if (excludeConnectionIds.size === 0) {
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
+        liveEnd(liveId, { status: "error" });
         return withSelectedConnectionHeader(
           errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`),
           credentials?.connectionId ?? null
         );
       }
       log.warn("CHAT", "No more accounts available", { provider });
+      liveEnd(liveId, { status: "error" });
       return withSelectedConnectionHeader(
         errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable"),
         lastExcludedConnectionId
@@ -434,6 +443,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Log account selection
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
+    liveRouted(liveId, { account: credentials.connectionName, connectionId: credentials.connectionId });
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
@@ -532,12 +542,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         request?.headers?.get("x-session-id") ||
         (apiKey ? `k:${Buffer.from(apiKey).toString("base64")}` : null),
     });
+    } catch (e) {
+      liveEnd(liveId, { status: "error" });
+      throw e;
     } finally {
       // Always release the semaphore slot, even if handleChatCore throws
       semaphoreRelease();
     }
 
-    if (result.success) return withSelectedConnectionHeader(result.response, credentials.connectionId); // sets X-Mayday-Selected-Connection-Id
+    if (result.success) return withSelectedConnectionHeader(instrumentResponseStream(result.response, liveId), credentials.connectionId); // sets X-Mayday-Selected-Connection-Id
 
     // Client disconnected mid-flight: exit WITHOUT locking/marking the account —
     // the upstream failure may simply be our own abort rippling through.
@@ -612,12 +625,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
+      liveFallback(liveId, { fromAccount: credentials.connectionName, status: result.status });
       excludeConnectionIds.add(credentials.connectionId);
       lastError = errorText;
       lastStatus = result.status;
       continue;
     }
 
+    liveEnd(liveId, { status: "error" });
     return withSelectedConnectionHeader(result.response, credentials.connectionId); // sets X-Mayday-Selected-Connection-Id
   }
 }

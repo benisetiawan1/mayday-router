@@ -104,9 +104,13 @@ function processTextNode(node) {
   // Use original text for translation
   const original = node._originalText;
   const translated = translate(original);
-  
-  // Only update if different to avoid unnecessary DOM mutations
-  if (translated !== node.nodeValue) {
+
+  // Only write when a real translation exists (translated !== original).
+  // Never "revert" nodeValue back to the stored original: React may have
+  // updated this text node with fresh data (e.g. status strip numbers after
+  // fetch), and processElement(document.body) runs on every route change —
+  // reverting would clobber live values with hydration-time placeholders.
+  if (translated !== original && translated !== node.nodeValue) {
     node.nodeValue = translated;
   }
 }

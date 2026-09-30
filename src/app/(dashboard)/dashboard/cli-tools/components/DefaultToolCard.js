@@ -128,16 +128,12 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           onChange={(e) => setModelValue(e.target.value)}
           placeholder="provider/model-id"
           aria-label="Model ID"
-          className="w-full sm:w-auto flex-1 px-3 py-2 bg-bg-secondary rounded-lg text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+          className="inp flex-1"
         />
         <button type="button"
           onClick={() => setShowModelModal(true)}
           disabled={!hasActiveProviders}
-          className={`shrink-0 px-3 py-2 rounded-lg border text-sm transition-colors ${
-            hasActiveProviders
-              ? "bg-bg-secondary border-border text-text-main hover:border-primary cursor-pointer"
-              : "opacity-50 cursor-not-allowed border-border"
-          }`}
+          className={`btn ${hasActiveProviders ? "" : "cursor-not-allowed"}`}
         >
           Select Model
         </button>
@@ -145,7 +141,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           <>
             <button type="button"
               onClick={() => handleCopy(modelValue, "model")}
-              className="shrink-0 px-3 py-2 bg-bg-secondary hover:bg-bg-tertiary rounded-lg border border-border transition-colors"
+              className="btn"
             >
               <span className="material-symbols-outlined text-lg">
                 {copiedField === "model" ? "check" : "content_copy"}
@@ -188,13 +184,13 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
             {item.type === "modelSelector" && renderModelSelector()}
             {item.value && (
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
-                <code className="w-full sm:w-auto flex-1 px-3 py-2 bg-bg-secondary rounded-lg text-sm font-mono border border-border truncate">
+                <code className="inp w-full sm:w-auto flex-1 font-mono truncate flex items-center">
                   {replaceVars(item.value)}
                 </code>
                 {item.copyable && (
                   <button type="button"
                     onClick={() => handleCopy(item.value, `${item.step}-${item.title}`)}
-                    className="shrink-0 px-3 py-2 bg-bg-secondary hover:bg-bg-tertiary rounded-lg border border-border transition-colors"
+                    className="btn"
                   >
                     <span className="material-symbols-outlined text-lg">
                       {copiedField === `${item.step}-${item.title}` ? "check" : "content_copy"}
@@ -213,7 +209,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
             <span className="text-xs text-text-muted uppercase tracking-wide">{tool.codeBlock.language}</span>
             <button type="button"
               onClick={() => handleCopy(tool.codeBlock.code, "codeblock")}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-bg-secondary hover:bg-bg-tertiary rounded border border-border transition-colors"
+              className="btn ghost"
             >
               <span className="material-symbols-outlined text-sm">
                 {copiedField === "codeblock" ? "check" : "content_copy"}

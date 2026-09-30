@@ -3,8 +3,7 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
-import ProviderIcon from "@/shared/components/ProviderIcon";
+import { Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
 import ModelsCard from "@/app/(dashboard)/dashboard/providers/components/ModelsCard";
@@ -70,63 +69,56 @@ export default function MediaProviderDetailPage() {
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Back */}
-      <div>
-        <Link
-          href={`/dashboard/media-providers/${kind}`}
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
-        >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
-          {kindConfig.label}
-        </Link>
-
-        {/* Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          <div className="size-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${provider.color}15` }}>
-            <ProviderIcon
-              src={`/providers/${provider.id}.webp`}
-              alt={provider.name}
-              size={48}
-              className="object-contain rounded-lg max-w-[48px] max-h-[48px]"
-              fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
-              fallbackColor={provider.color}
-            />
+    <div className="flex flex-col">
+      {/* Back + Header */}
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t">
+            <Link
+              href={`/dashboard/media-providers/${kind}`}
+              className="material-symbols-outlined text-[16px] align-text-bottom"
+              aria-label="Back"
+            >
+              arrow_back
+            </Link>
+            <b>01</b> · {provider.name}
+          </span>
+          <div className="acts">
+            {!isCustom && provider.notice?.apiKeyUrl && (
+              <a
+                href={provider.notice.apiKeyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn ghost"
+              >
+                <span className="material-symbols-outlined text-sm">open_in_new</span>
+                Get API Key
+              </a>
+            )}
+            {isCustom && (
+              <>
+                <Button size="sm" variant="secondary" icon="edit" onClick={() => setShowEditModal(true)}>
+                  Edit
+                </Button>
+                <Button size="sm" variant="secondary" icon="delete" onClick={handleDeleteCustom}>
+                  Delete
+                </Button>
+              </>
+            )}
           </div>
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">{provider.name}</h1>
-              {!isCustom && provider.notice?.apiKeyUrl && (
-                <a
-                  href={provider.notice.apiKeyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  Get API Key
-                </a>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-              {isCustom && <Badge variant="default" size="sm">Custom · {customNode?.prefix}</Badge>}
+        </div>
+        <div className="spec">
+          <div className="kv">
+            <div className="k">Kinds</div>
+            <div className="v">
+              {isCustom && <span className="tag">Custom · {customNode?.prefix}</span>}
               {kinds.map((k) => (
-                <Badge key={k} variant={k === kind ? "primary" : "default"} size="sm">
+                <span key={k} className={`tag ${k === kind ? "a" : ""}`}>
                   {k.toUpperCase()}
-                </Badge>
+                </span>
               ))}
             </div>
           </div>
-          {isCustom && (
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <Button size="sm" variant="secondary" icon="edit" onClick={() => setShowEditModal(true)}>
-                Edit
-              </Button>
-              <Button size="sm" variant="secondary" icon="delete" onClick={handleDeleteCustom}>
-                Delete
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 

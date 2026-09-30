@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card, Button } from "@/shared/components";
+import { Button } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useTheme } from "@/shared/hooks/useTheme";
 import dynamic from "next/dynamic";
@@ -17,10 +17,10 @@ function saveTranslatorFile(file, content) {
 }
 
 const META_BADGE_COLORS = {
-  blue: "bg-blue-500/10 text-blue-500",
-  orange: "bg-orange-500/10 text-orange-500",
-  green: "bg-green-500/10 text-green-500",
-  purple: "bg-purple-500/10 text-purple-500",
+  blue: "tag b",
+  orange: "tag a",
+  green: "tag g",
+  purple: "tag",
 };
 
 // 7 steps matching requestLogger files exactly
@@ -224,22 +224,21 @@ export default function TranslatorPage() {
   };
 
   return (
-    <div className="p-8 space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <h1 className="text-2xl font-bold text-text-main">Translator Debug</h1>
-          <p className="text-sm text-text-muted mt-1">Replay request flow — matches log files</p>
+    <div className="panel">
+      <div className="panel-head">
+        <span className="t"><b>01</b> · Translator Debug</span>
+        <span className="dim">Replay request flow — matches log files</span>
+        <div className="acts">
+          {meta && (
+            <>
+              <MetaBadge label="src" value={meta.sourceFormat} color="blue" />
+              <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
+              <MetaBadge label="dst" value={meta.targetFormat} color="orange" />
+              <MetaBadge label="provider" value={meta.provider} color="green" />
+              <MetaBadge label="model" value={meta.model} color="purple" />
+            </>
+          )}
         </div>
-        {meta && (
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <MetaBadge label="src" value={meta.sourceFormat} color="blue" />
-            <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
-            <MetaBadge label="dst" value={meta.targetFormat} color="orange" />
-            <MetaBadge label="provider" value={meta.provider} color="green" />
-            <MetaBadge label="model" value={meta.model} color="purple" />
-          </div>
-        )}
       </div>
 
       {STEPS.map((step) => {
@@ -248,31 +247,17 @@ export default function TranslatorPage() {
         const content = contents[step.id] || "";
 
         return (
-          <Card key={step.id}>
-            <div className="p-4 space-y-3">
-              {/* Step header */}
-              <div className="flex items-center justify-between">
-                <button type="button" onClick={() => toggle(step.id)} className="flex items-center gap-2 flex-1 text-left group">
-                  <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-primary transition-colors">
-                    {isExpanded ? "expand_more" : "chevron_right"}
-                  </span>
-                  <span className="text-xs font-mono text-text-muted/60 w-4">{step.id}</span>
-                  <h3 className="text-sm font-semibold text-text-main">{step.label}</h3>
-                  <span className="text-xs text-text-muted/60 font-mono">{step.file}</span>
-                  {content && <span className="text-xs text-green-500">({content.length} chars)</span>}
-                </button>
-                {!isExpanded && (
-                  <div className="flex gap-1 shrink-0">
-                    <Button size="sm" variant="ghost" icon="folder_open" loading={loading[`load-${step.id}`]} onClick={() => handleLoad(step.id)} />
-                    {action}
-                  </div>
-                )}
-              </div>
-
-              {/* Expanded content */}
+          <div className="step" key={step.id}>
+            <span className="n">{step.id}</span>
+            <div className="body">
+              <button type="button" onClick={() => toggle(step.id)} className="flex flex-wrap items-center gap-2 text-left">
+                <span className="cr-name">{step.label}</span>
+                <span className="sid">{step.file}</span>
+                {content && <span className="text-[11px] text-green-500">({content.length} chars)</span>}
+              </button>
               {isExpanded && (
-                <>
-                  <div className="border border-border rounded-lg overflow-hidden">
+                <div className="mt-3 space-y-2.5">
+                  <div className="border border-border rounded overflow-hidden">
                     <Editor
                       height="400px"
                       defaultLanguage={step.lang === "text" ? "plaintext" : "json"}
@@ -285,16 +270,22 @@ export default function TranslatorPage() {
                       options={EDITOR_OPTIONS}
                     />
                   </div>
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap">
                     <Button size="sm" variant="outline" icon="folder_open" loading={loading[`load-${step.id}`]} onClick={() => handleLoad(step.id)}>Load</Button>
                     <Button size="sm" variant="outline" icon="data_object" onClick={() => handleFormat(step.id)}>Format</Button>
                     <Button size="sm" variant="outline" icon="content_copy" onClick={() => handleCopy(step.id)}>Copy</Button>
                     {action}
                   </div>
-                </>
+                </div>
               )}
             </div>
-          </Card>
+            {!isExpanded && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button size="sm" variant="ghost" icon="folder_open" loading={loading[`load-${step.id}`]} onClick={() => handleLoad(step.id)} />
+                {action}
+              </div>
+            )}
+          </div>
         );
       })}
     </div>
@@ -302,10 +293,9 @@ export default function TranslatorPage() {
 }
 
 function MetaBadge({ label, value, color }) {
-  const colors = META_BADGE_COLORS;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono ${colors[color]}`}>
-      <span className="text-text-muted/70 font-sans text-[10px]">{label}:</span>{value}
+    <span className={META_BADGE_COLORS[color]}>
+      <span className="text-text-muted/70">{label}:</span>{value}
     </span>
   );
 }

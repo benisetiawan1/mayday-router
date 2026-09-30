@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useMemo, Fragment, useEffect } from "react";
-import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
 
 const _nf = new Intl.NumberFormat();
@@ -29,13 +28,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
   if (viewMode === "tokens") {
     return (
       <>
-        <td className="px-6 py-3 text-right text-text-muted">
+        <td className="px-6 py-3 text-right text-text-muted tabular-nums">
           {isSummary && item.promptTokens === undefined ? "—" : fmt(item.promptTokens)}
         </td>
-        <td className="px-6 py-3 text-right text-text-muted">
+        <td className="px-6 py-3 text-right text-text-muted tabular-nums">
           {isSummary && item.completionTokens === undefined ? "—" : fmt(item.completionTokens)}
         </td>
-        <td className="px-6 py-3 text-right font-medium">
+        <td className="px-6 py-3 text-right font-medium tabular-nums">
           {fmt(item.totalTokens)}
         </td>
       </>
@@ -43,13 +42,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
   }
   return (
     <>
-      <td className="px-6 py-3 text-right text-text-muted">
+      <td className="px-6 py-3 text-right text-text-muted tabular-nums">
         {isSummary && item.inputCost === undefined ? "—" : fmtCost(item.inputCost)}
       </td>
-      <td className="px-6 py-3 text-right text-text-muted">
+      <td className="px-6 py-3 text-right text-text-muted tabular-nums">
         {isSummary && item.outputCost === undefined ? "—" : fmtCost(item.outputCost)}
       </td>
-      <td className="px-6 py-3 text-right font-medium text-warning">
+      <td className="px-6 py-3 text-right font-medium text-warning tabular-nums">
         {fmtCost(item.totalCost || item.cost)}
       </td>
     </>
@@ -131,80 +130,75 @@ export default function UsageTable({
   const totalColSpan = columns.length + valueColumns.length;
 
   return (
-    <Card className="overflow-hidden">
-      <div className="p-4 border-b border-border bg-bg-subtle/50">
-        <h3 className="font-semibold">{title}</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-bg-subtle/30 text-text-muted uppercase text-xs">
-            <tr>
-              {columns.map((col) => (
-                <th
-                  key={col.field}
-                  className={`px-6 py-3 cursor-pointer hover:bg-bg-subtle/50 ${col.align === "right" ? "text-right" : ""}`}
-                  onClick={() => onToggleSort(tableType, col.field)}
-                >
-                  {col.label}{" "}
-                  <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
-                </th>
-              ))}
-              {valueColumns.map((col) => (
-                <th
-                  key={col.field}
-                  className="px-6 py-3 text-right cursor-pointer hover:bg-bg-subtle/50"
-                  onClick={() => onToggleSort(tableType, col.field)}
-                >
-                  {col.label}{" "}
-                  <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {groupedData.map((group) => (
-              <Fragment key={group.groupKey}>
-                {/* Group summary row */}
-                <tr
-                  className="group-summary cursor-pointer hover:bg-bg-subtle/50 transition-colors"
-                  onClick={() => toggleGroup(group.groupKey)}
-                >
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`material-symbols-outlined text-[18px] text-text-muted transition-transform ${expanded.has(group.groupKey) ? "rotate-90" : ""}`}>
-                        chevron_right
-                      </span>
-                      <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>
-                        {group.groupKey}
-                      </span>
-                    </div>
-                  </td>
-                  {summaryCells(group)}
-                  <ValueCells item={group.summary} viewMode={viewMode} isSummary />
-                </tr>
-                {/* Detail rows */}
-                {expanded.has(group.groupKey) && group.items.map((item) => (
-                  <tr
-                    key={`detail-${item.key}`}
-                    className="group-detail hover:bg-bg-subtle/20 transition-colors"
-                  >
-                    {detailCells(item)}
-                    <ValueCells item={item} viewMode={viewMode} />
-                  </tr>
-                ))}
-              </Fragment>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm text-left">
+        <thead className="bg-bg-subtle/30 text-text-muted uppercase text-xs">
+          <tr>
+            {columns.map((col) => (
+              <th
+                key={col.field}
+                className={`px-6 py-3 cursor-pointer hover:bg-bg-subtle/50 ${col.align === "right" ? "text-right" : ""}`}
+                onClick={() => onToggleSort(tableType, col.field)}
+              >
+                {col.label}{" "}
+                <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
+              </th>
             ))}
-            {groupedData.length === 0 && (
-              <tr>
-                <td colSpan={totalColSpan} className="px-6 py-8 text-center text-text-muted">
-                  {emptyMessage}
+            {valueColumns.map((col) => (
+              <th
+                key={col.field}
+                className="px-6 py-3 text-right cursor-pointer hover:bg-bg-subtle/50"
+                onClick={() => onToggleSort(tableType, col.field)}
+              >
+                {col.label}{" "}
+                <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border-subtle">
+          {groupedData.length === 0 && (
+            <tr>
+              <td colSpan={totalColSpan} className="px-6 py-8 text-center text-text-muted">
+                {emptyMessage}
+              </td>
+            </tr>
+          )}
+          {groupedData.map((group) => (
+            <Fragment key={group.groupKey}>
+              {/* Group summary row */}
+              <tr
+                className="group-summary cursor-pointer hover:bg-bg-subtle/50 transition-colors"
+                onClick={() => toggleGroup(group.groupKey)}
+              >
+                <td className="px-6 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`material-symbols-outlined text-[18px] text-text-muted transition-transform ${expanded.has(group.groupKey) ? "rotate-90" : ""}`}>
+                      chevron_right
+                    </span>
+                    <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>
+                      {group.groupKey}
+                    </span>
+                  </div>
                 </td>
+                {summaryCells(group)}
+                <ValueCells item={group.summary} viewMode={viewMode} isSummary />
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+              {/* Detail rows */}
+              {expanded.has(group.groupKey) && group.items.map((item) => (
+                <tr
+                  key={`detail-${item.key}`}
+                  className="group-detail hover:bg-bg-subtle/20 transition-colors"
+                >
+                  {detailCells(item)}
+                  <ValueCells item={item} viewMode={viewMode} />
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

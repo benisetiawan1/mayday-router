@@ -6,7 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, Pagination } from "@/shared/components";
+import { Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, Pagination } from "@/shared/components";
 import { CONNECTIONS_PER_PAGE, computeConnectionPagination } from "./connectionsPagination";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
@@ -1085,13 +1085,24 @@ export default function ProviderDetailPage() {
 
   const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
+  const connGridColumns = "26px minmax(0,1fr) 70px 110px 90px 110px";
   const connectionsList = (
-    <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
-      {pagedConnections.map((conn, pageIndex) => {
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="overflow-x-auto">
+        <div className="min-w-[760px]">
+          <div className="row head" style={{ gridTemplateColumns: connGridColumns, gap: "10px" }}>
+            <div />
+            <div>Connection</div>
+            <div>Priority</div>
+            <div>Last test</div>
+            <div>Pool</div>
+            <div>Actions</div>
+          </div>
+          {pagedConnections.map((conn, pageIndex) => {
         const index = pagedStart + pageIndex;
         return (
-          <div key={conn.id} className="flex min-w-0 items-stretch">
-            <div className="flex shrink-0 items-center pl-1 sm:pl-2">
+          <div key={conn.id} className={`row ${conn.isActive === false ? "opacity-60" : ""}`} style={{ gridTemplateColumns: connGridColumns, gap: "10px" }}>
+            <div className="flex items-center">
               <input
                 type="checkbox"
                 checked={isSelected(conn.id)}
@@ -1099,8 +1110,7 @@ export default function ProviderDetailPage() {
                 className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
               />
             </div>
-            <div className="flex-1 min-w-0">
-              <ConnectionRow
+            <ConnectionRow
                 connection={conn}
                 proxyPools={proxyPools}
                 isOAuth={isOAuth}
@@ -1157,10 +1167,11 @@ export default function ProviderDetailPage() {
                 onModelAssignmentChange={providerId === "freebuff" ? (model) => handleModelAssignment(conn.id, model) : null}
                 strictModelAssignment={strictModelAssignment}
               />
-            </div>
           </div>
         );
       })}
+        </div>
+      </div>
       {connections.length > CONNECTIONS_PER_PAGE && (
         <Pagination
           currentPage={connectionPageClamped}
@@ -1321,60 +1332,72 @@ export default function ProviderDetailPage() {
     });
 
     return (
-      <div className="flex flex-wrap gap-3">
-        {/* Custom models first */}
-        {customModelRows.map((model) => (
-          <ModelRow
-            key={`${model.source}-${model.fullModel}`}
-            model={{ id: model.id, name: model.name }}
-            fullModel={`${providerDisplayAlias}/${model.id}`}
-            alias={model.alias}
-            copied={copied}
-            onCopy={copy}
-            onSetAlias={() => {}}
-            onDeleteAlias={() => {
-              if (model.source === "custom") {
-                handleDeleteCustomModel(model.id, "llm", providerStorageAlias);
-              } else {
-                handleDeleteAlias(model.alias);
-              }
-            }}
-            testStatus={modelTestResults[model.id]}
-            onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
-            isTesting={testingModelIds.has(model.id)}
-            isCustom
-            isFree={false}
-            caps={getCaps(`${providerId}/${model.id}`)}
-            thinkingSuffix={resolveThinkingSuffix(model.id)}
-          />
-        ))}
+      <div className="flex flex-col gap-3">
+        <div className="overflow-x-auto">
+          <div className="min-w-[640px]">
+            <div className="row head" style={{ gridTemplateColumns: "minmax(0,1fr) 200px 160px 110px", gap: "10px" }}>
+              <div>Model</div>
+              <div>Capabilities</div>
+              <div>Alias</div>
+              <div>Actions</div>
+            </div>
+            {/* Custom models first */}
+            {customModelRows.map((model) => (
+              <div key={`${model.source}-${model.fullModel}`} className="group row items-center" style={{ gridTemplateColumns: "minmax(0,1fr) 200px 160px 110px", gap: "10px" }}>
+                <ModelRow
+                  model={{ id: model.id, name: model.name }}
+                  fullModel={`${providerDisplayAlias}/${model.id}`}
+                  alias={model.alias}
+                  copied={copied}
+                  onCopy={copy}
+                  onSetAlias={() => {}}
+                  onDeleteAlias={() => {
+                    if (model.source === "custom") {
+                      handleDeleteCustomModel(model.id, "llm", providerStorageAlias);
+                    } else {
+                      handleDeleteAlias(model.alias);
+                    }
+                  }}
+                  testStatus={modelTestResults[model.id]}
+                  onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
+                  isTesting={testingModelIds.has(model.id)}
+                  isCustom
+                  isFree={false}
+                  caps={getCaps(`${providerId}/${model.id}`)}
+                  thinkingSuffix={resolveThinkingSuffix(model.id)}
+                />
+              </div>
+            ))}
 
-        {displayModels.map((model) => {
-          const fullModel = `${providerStorageAlias}/${model.id}`;
-          const oldFormatModel = `${providerId}/${model.id}`;
-          const existingAlias = Object.entries(modelAliases).find(
-            ([, m]) => m === fullModel || m === oldFormatModel
-          )?.[0];
-          return (
-            <ModelRow
-              key={model.id}
-              model={model}
-              fullModel={`${providerDisplayAlias}/${model.id}`}
-              alias={existingAlias}
-              copied={copied}
-              onCopy={copy}
-              onSetAlias={(alias) => handleSetAlias(model.id, alias, providerStorageAlias)}
-              onDeleteAlias={() => handleDeleteAlias(existingAlias)}
-              testStatus={modelTestResults[model.id]}
-              onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
-              isTesting={testingModelIds.has(model.id)}
-              isFree={model.isFree}
-              onDisable={() => handleDisableModel(model.id)}
-              caps={getCaps(`${providerId}/${model.id}`)}
-              thinkingSuffix={resolveThinkingSuffix(model.id)}
-            />
-          );
-        })}
+            {displayModels.map((model) => {
+              const fullModel = `${providerStorageAlias}/${model.id}`;
+              const oldFormatModel = `${providerId}/${model.id}`;
+              const existingAlias = Object.entries(modelAliases).find(
+                ([, m]) => m === fullModel || m === oldFormatModel
+              )?.[0];
+              return (
+                <div key={model.id} className="group row items-center" style={{ gridTemplateColumns: "minmax(0,1fr) 200px 160px 110px", gap: "10px" }}>
+                  <ModelRow
+                    model={model}
+                    fullModel={`${providerDisplayAlias}/${model.id}`}
+                    alias={existingAlias}
+                    copied={copied}
+                    onCopy={copy}
+                    onSetAlias={(alias) => handleSetAlias(model.id, alias, providerStorageAlias)}
+                    onDeleteAlias={() => handleDeleteAlias(existingAlias)}
+                    testStatus={modelTestResults[model.id]}
+                    onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
+                    isTesting={testingModelIds.has(model.id)}
+                    isFree={model.isFree}
+                    onDisable={() => handleDisableModel(model.id)}
+                    caps={getCaps(`${providerId}/${model.id}`)}
+                    thinkingSuffix={resolveThinkingSuffix(model.id)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Add model button — inline, same style as model chips */}
         <button
@@ -1473,82 +1496,15 @@ export default function ProviderDetailPage() {
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:gap-8 sm:px-0">
-      {/* Header */}
-      <div className="min-w-0">
-        <Link
-          href="/dashboard/providers"
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
-        >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
-          Back to Providers
-        </Link>
-        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-          <ProviderIcon
-            providerId={providerInfo.id}
-            size={48}
-            alt={providerInfo.name}
-            className="shrink-0 rounded-lg"
-            fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
-            fallbackColor={providerInfo.color}
-          />
-          <div className="min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
-              {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) && (
-                <a
-                  href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  {providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
-                </a>
-              )}
-            </div>
-            <p className="text-text-muted">
-              {connections.length} connection{connections.length === 1 ? "" : "s"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {providerInfo.deprecated && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-          <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning</span>
-          <p className="text-xs text-red-600 dark:text-yellow-400 leading-relaxed">{providerInfo.deprecationNotice}</p>
-        </div>
-      )}
-
-      {providerInfo.notice?.text && !providerInfo.deprecated && (
-        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
-          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{providerInfo.notice.text}</p>
-          {providerInfo.notice.apiKeyUrl && (
-            <a
-              href={providerInfo.notice.apiKeyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5"
-            >
-              Get API Key →
-            </a>
-          )}
-        </div>
-      )}
-
+<div className="flex min-w-0 flex-col px-1 sm:px-0">
+      {/* Compatible node details */}
       {isCompatible && providerNode && (
-        <Card>
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold">{isAnthropicCompatible ? "Anthropic Compatible Details" : "OpenAI Compatible Details"}</h2>
-              <p className="break-all text-sm text-text-muted">
-                {isAnthropicCompatible ? "Messages API" : (providerNode.apiType === "responses" ? "Responses API" : "Chat Completions")} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
-                {isAnthropicCompatible ? "messages" : (providerNode.apiType === "responses" ? "responses" : "chat/completions")}
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
+        <div className="panel">
+          <div className="panel-head">
+            <span className="t">
+              <b>01</b> · {isAnthropicCompatible ? "Anthropic Compatible Details" : "OpenAI Compatible Details"}
+            </span>
+            <div className="acts">
               <Button
                 size="sm"
                 icon="add"
@@ -1556,7 +1512,6 @@ export default function ProviderDetailPage() {
                   setAddConnectionError("");
                   setShowAddApiKeyModal(true);
                 }}
-                className="w-full sm:w-auto"
               >
                 Add API Key
               </Button>
@@ -1565,7 +1520,6 @@ export default function ProviderDetailPage() {
                 variant="secondary"
                 icon="edit"
                 onClick={() => setShowEditNodeModal(true)}
-                className="w-full sm:w-auto"
               >
                 Edit
               </Button>
@@ -1590,267 +1544,335 @@ export default function ProviderDetailPage() {
                     }
                   });
                 }}
-                className="w-full sm:w-auto"
               >
                 Delete
               </Button>
             </div>
           </div>
-        </Card>
+          <p className="break-all text-sm text-text-muted px-4 py-3">
+            {isAnthropicCompatible ? "Messages API" : (providerNode.apiType === "responses" ? "Responses API" : "Chat Completions")} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
+            {isAnthropicCompatible ? "messages" : (providerNode.apiType === "responses" ? "responses" : "chat/completions")}
+          </p>
+        </div>
       )}
 
-      {/* Connections */}
-      {isFreeNoAuth ? (
-        <NoAuthProxyCard providerId={providerId} />
-      ) : (
-        <Card>
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold">Connections</h2>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              {connections.length > 0 && proxyPools.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="lan"
-                  onClick={() => setShowBulkProxyModal(true)}
+      <div className="panel">
+        {/* Breadcrumb */}
+        <div className="panel-head">
+          <Link
+            href="/dashboard/providers"
+            className="btn ghost"
+          >
+            <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+            Back to Providers
+          </Link>
+          <div className="plogo" style={{ background: providerInfo.color || "#475569" }}>
+            <ProviderIcon
+              src={getHeaderIconPath()}
+              alt={providerInfo.name}
+              size={26}
+              className="w-full h-full object-contain"
+              fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
+              fallbackColor="#fff"
+            />
+          </div>
+          <span className="t"><b>{providerInfo.name}</b> · {providerInfo.id}</span>
+          <span className="tag g">{connections.length} KEYS</span>
+          <div className="acts">
+            {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) && (
+              <a
+                href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+              >
+                <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                {providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
+              </a>
+            )}
+          </div>
+        </div>
+
+        {providerInfo.deprecated && (
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+              <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning</span>
+              <p className="text-xs text-red-600 dark:text-yellow-400 leading-relaxed">{providerInfo.deprecationNotice}</p>
+            </div>
+          </div>
+        )}
+
+        {providerInfo.notice?.text && !providerInfo.deprecated && (
+          <div className="px-4 py-3">
+            <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
+              <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
+              <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{providerInfo.notice.text}</p>
+              {providerInfo.notice.apiKeyUrl && (
+                <a
+                  href={providerInfo.notice.apiKeyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5"
                 >
-                  Apply Proxy
-                </Button>
-              )}
-              {connections.length > 0 && (
-                <>
-                  {selectedConnectionIds.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      icon="delete"
-                      onClick={handleBulkDelete}
-                    >
-                      Delete Selected ({selectedConnectionIds.length})
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon="sync"
-                    onClick={handleRunOneByOneTest}
-                    disabled={oneByOneRunning}
-                  >
-                    {oneByOneRunning ? "Testing Connection One-by-One..." : "Test Connection One-by-One"}
-                  </Button>
-                  {oneByOneRunning && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon="stop"
-                      onClick={handleStopOneByOneTest}
-                      disabled={oneByOneStopping}
-                    >
-                      {oneByOneStopping ? "Stopping..." : "Stop"}
-                    </Button>
-                  )}
-                </>
-              )}
-              {/* Round Robin toggle */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-text-muted font-medium">Round Robin</span>
-                <Toggle
-                  checked={providerStrategy === "round-robin"}
-                  onChange={handleRoundRobinToggle}
-                />
-                {providerStrategy === "round-robin" && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-text-muted">Sticky:</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={providerStickyLimit}
-                      onChange={(e) => handleStickyLimitChange(e.target.value)}
-                      placeholder="1"
-                      className="w-14 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                )}
-              </div>
-              {providerId === "freebuff" && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-black/[0.03] pt-2 dark:border-white/[0.03]">
-                  <div>
-                    <span className="text-xs text-text-muted font-medium">Strict Model Assignment</span>
-                    <p className="text-[10px] text-text-muted">Only assigned accounts can serve each Freebuff model.</p>
-                  </div>
-                  <Toggle checked={strictModelAssignment} onChange={handleStrictAssignmentToggle} />
-                </div>
+                  Get API Key →
+                </a>
               )}
             </div>
           </div>
+        )}
 
-          {connections.length === 0 ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
-                  <span className="material-symbols-outlined text-[18px]">{isOAuth ? "lock" : "key"}</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm text-text-muted">No connections yet</p>
-                  {hasDualAuthModes && (
-                    <p className="text-xs text-text-muted">
-                      Choose {oauthConnectionLabel} or {apiKeyConnectionLabel}.
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {hasDualAuthModes ? (
+        {!isFreeNoAuth && (
+          <div className="frm">
+            <span className="fl">Round Robin</span>
+            <Toggle
+              checked={providerStrategy === "round-robin"}
+              onChange={handleRoundRobinToggle}
+            />
+            <div className="flex items-center gap-1.5">
+              {providerStrategy === "round-robin" && (
+                <>
+                  <span className="dim">Sticky:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={providerStickyLimit}
+                    onChange={(e) => handleStickyLimitChange(e.target.value)}
+                    placeholder="1"
+                    className="w-14 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {providerId === "freebuff" && (
+          <div className="frm">
+            <span className="fl">Strict Model Assignment</span>
+            <span>
+              <span className="text-xs text-text-muted font-medium">Strict Model Assignment</span>
+              <p className="text-[10px] text-text-muted">Only assigned accounts can serve each Freebuff model.</p>
+            </span>
+            <Toggle checked={strictModelAssignment} onChange={handleStrictAssignmentToggle} />
+          </div>
+        )}
+
+        {isFreeNoAuth ? (
+          <>
+            <div className="panel-head" style={{ borderTop: 0 }}>
+              <span className="t">Proxy Routing &amp; Strategy</span>
+            </div>
+            <NoAuthProxyCard providerId={providerId} />
+          </>
+        ) : (
+          <>
+            <div className="panel-head" style={{ borderTop: 0 }}>
+              <span className="t">Connections</span>
+              <div className="acts">
+                {connections.length > 0 && proxyPools.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon="lan"
+                    onClick={() => setShowBulkProxyModal(true)}
+                  >
+                    Apply Proxy
+                  </Button>
+                )}
+                {connections.length > 0 && (
                   <>
-                    <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>
-                      {oauthConnectionLabel}
-                    </Button>
-                    <Button size="sm" icon="key" onClick={triggerApiKeyConnection}>
-                      {apiKeyConnectionLabel}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    {!isCompatible && providerId === "iflow" && (
-                      <Button size="sm" icon="cookie" variant="secondary" onClick={() => setShowIFlowCookieModal(true)}>
-                        Cookie
-                      </Button>
-                    )}
-                    {providerId === "codex" && (
-                      <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportCodex(true)}>
-                        {translate("Bulk Add")}
-                      </Button>
-                    )}
-                    {providerId === "grok-cli" && (
-                      <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportGrokCli(true)}>
-                        {translate("Bulk Add")}
+                    {selectedConnectionIds.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        icon="delete"
+                        onClick={handleBulkDelete}
+                      >
+                        Delete Selected ({selectedConnectionIds.length})
                       </Button>
                     )}
                     <Button
                       size="sm"
-                      icon="add"
-                      onClick={triggerAddConnection}
+                      variant="secondary"
+                      icon="sync"
+                      onClick={handleRunOneByOneTest}
+                      disabled={oneByOneRunning}
                     >
-                      {isCompatible ? "Add API Key" : (providerId === "iflow" ? "OAuth" : "Add Connection")}
+                      {oneByOneRunning ? "Testing Connection One-by-One..." : "Test Connection One-by-One"}
                     </Button>
+                    {oneByOneRunning && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon="stop"
+                        onClick={handleStopOneByOneTest}
+                        disabled={oneByOneStopping}
+                      >
+                        {oneByOneStopping ? "Stopping..." : "Stop"}
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
             </div>
-          ) : (
-            <>
-              {oneByOneSummary && (
-                <div className="mb-4 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2 text-xs text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span>Total: {oneByOneSummary.total}</span>
-                    <span>Completed: {oneByOneSummary.completed}</span>
-                    <span>Passed: {oneByOneSummary.passed}</span>
-                    <span>Failed: {oneByOneSummary.failed}</span>
-                    {oneByOneSummary.stopped && (
-                      <span className="text-amber-600 dark:text-amber-400">Stopped</span>
-                    )}
-                    {oneByOneRunning && oneByOneCurrentConnectionId && (
-                      <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
-                    )}
+
+            {connections.length === 0 ? (
+              <div className="empty">
+                <div className="big">No connections yet</div>
+                {hasDualAuthModes && (
+                  <div className="sub">
+                    Choose {oauthConnectionLabel} or {apiKeyConnectionLabel}.
                   </div>
-                </div>
-              )}
-              {connections.length > 0 && (
-                <div className="mb-3 flex items-center gap-2 border-b border-black/[0.03] pb-2 dark:border-white/[0.03]">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-text-muted hover:text-primary">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleSelectAllConnections}
-                      className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
-                    />
-                    Select All
-                  </label>
-                </div>
-              )}
-              {connectionsList}
-              {!isCompatible && (
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:flex">
-                  {providerId === "iflow" && (
-                    <Button
-                      size="sm"
-                      icon="cookie"
-                      variant="secondary"
-                      onClick={() => setShowIFlowCookieModal(true)}
-                      title="Add connection using browser cookie"
-                      className="w-full sm:w-auto"
-                    >
-                      Cookie
-                    </Button>
-                  )}
-                  {providerId === "codex" && (
-                    <Button
-                      size="sm"
-                      icon="playlist_add"
-                      variant="secondary"
-                      onClick={() => setShowBulkImportCodex(true)}
-                      title={translate("Bulk import codex accounts from JSON")}
-                      className="w-full sm:w-auto"
-                    >
-                      {translate("Bulk Add")}
-                    </Button>
-                  )}
-                  {providerId === "grok-cli" && (
-                    <Button
-                      size="sm"
-                      icon="playlist_add"
-                      variant="secondary"
-                      onClick={() => setShowBulkImportGrokCli(true)}
-                      title={translate("Bulk import Grok CLI accounts from JSON")}
-                      className="w-full sm:w-auto"
-                    >
-                      {translate("Bulk Add")}
-                    </Button>
-                  )}
+                )}
+                <div className="flex flex-wrap gap-2 justify-center">
                   {hasDualAuthModes ? (
                     <>
-                      <Button
-                        size="sm"
-                        icon="lock"
-                        variant="secondary"
-                        onClick={triggerOAuthConnection}
-                        className="w-full sm:w-auto"
-                      >
+                      <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>
                         {oauthConnectionLabel}
                       </Button>
-                      <Button
-                        size="sm"
-                        icon="key"
-                        onClick={triggerApiKeyConnection}
-                        className="w-full sm:w-auto"
-                      >
+                      <Button size="sm" icon="key" onClick={triggerApiKeyConnection}>
                         {apiKeyConnectionLabel}
                       </Button>
                     </>
                   ) : (
-                    <Button
-                      size="sm"
-                      icon="add"
-                      onClick={triggerAddConnection}
-                      className="w-full sm:w-auto"
-                    >
-                      Add
-                    </Button>
+                    <>
+                      {!isCompatible && providerId === "iflow" && (
+                        <Button size="sm" icon="cookie" variant="secondary" onClick={() => setShowIFlowCookieModal(true)}>
+                          Cookie
+                        </Button>
+                      )}
+                      {providerId === "codex" && (
+                        <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportCodex(true)}>
+                          {translate("Bulk Add")}
+                        </Button>
+                      )}
+                      {providerId === "grok-cli" && (
+                        <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportGrokCli(true)}>
+                          {translate("Bulk Add")}
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        icon="add"
+                        onClick={triggerAddConnection}
+                      >
+                        {isCompatible ? "Add API Key" : (providerId === "iflow" ? "OAuth" : "Add Connection")}
+                      </Button>
+                    </>
                   )}
                 </div>
-              )}
-            </>
-          )}
-        </Card>
-      )}
+              </div>
+            ) : (
+              <>
+                {oneByOneSummary && (
+                  <div className="px-4 py-2 text-xs text-text-muted">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span>Total: {oneByOneSummary.total}</span>
+                      <span>Completed: {oneByOneSummary.completed}</span>
+                      <span>Passed: {oneByOneSummary.passed}</span>
+                      <span>Failed: {oneByOneSummary.failed}</span>
+                      {oneByOneSummary.stopped && (
+                        <span className="text-amber-600 dark:text-amber-400">Stopped</span>
+                      )}
+                      {oneByOneRunning && oneByOneCurrentConnectionId && (
+                        <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {connections.length > 0 && (
+                  <div className="px-4 py-2 border-b border-border-subtle flex items-center gap-2">
+                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-text-muted hover:text-primary">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleSelectAllConnections}
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      Select All
+                    </label>
+                  </div>
+                )}
+                {connectionsList}
+                {!isCompatible && (
+                  <div className="px-4 py-3 flex flex-wrap gap-2">
+                    {providerId === "iflow" && (
+                      <Button
+                        size="sm"
+                        icon="cookie"
+                        variant="secondary"
+                        onClick={() => setShowIFlowCookieModal(true)}
+                        title="Add connection using browser cookie"
+                        className="w-full sm:w-auto"
+                      >
+                        Cookie
+                      </Button>
+                    )}
+                    {providerId === "codex" && (
+                      <Button
+                        size="sm"
+                        icon="playlist_add"
+                        variant="secondary"
+                        onClick={() => setShowBulkImportCodex(true)}
+                        title={translate("Bulk import codex accounts from JSON")}
+                        className="w-full sm:w-auto"
+                      >
+                        {translate("Bulk Add")}
+                      </Button>
+                    )}
+                    {providerId === "grok-cli" && (
+                      <Button
+                        size="sm"
+                        icon="playlist_add"
+                        variant="secondary"
+                        onClick={() => setShowBulkImportGrokCli(true)}
+                        title={translate("Bulk import Grok CLI accounts from JSON")}
+                        className="w-full sm:w-auto"
+                      >
+                        {translate("Bulk Add")}
+                      </Button>
+                    )}
+                    {hasDualAuthModes ? (
+                      <>
+                        <Button
+                          size="sm"
+                          icon="lock"
+                          variant="secondary"
+                          onClick={triggerOAuthConnection}
+                          className="w-full sm:w-auto"
+                        >
+                          {oauthConnectionLabel}
+                        </Button>
+                        <Button
+                          size="sm"
+                          icon="key"
+                          onClick={triggerApiKeyConnection}
+                          className="w-full sm:w-auto"
+                        >
+                          {apiKeyConnectionLabel}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        icon="add"
+                        onClick={triggerAddConnection}
+                        className="w-full sm:w-auto"
+                      >
+                        Add
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
 
-      {/* Models */}
-      <Card>
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold">
-              {"Available Models"}
-            </h2>
+        {/* Models */}
+        <div className="panel-head" style={{ borderBottom: 0, borderTop: "1px solid var(--color-border)" }}>
+          <span className="t">Available Models</span>
+          <div className="acts">
             {providerThinkingLevels && (
               <select
                 value={thinkingMode}
@@ -1874,34 +1896,34 @@ export default function ProviderDetailPage() {
                 {translate("Import models")}
               </Button>
             )}
+            {!isCompatible && (() => {
+              const allIds = [
+                ...models,
+                ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
+              ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; }).map((m) => m.id);
+              const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
+              return (
+                <div className="flex gap-2">
+                  {disabledModelIds.length > 0 && (
+                    <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
+                      Active All
+                    </Button>
+                  )}
+                  {activeIds.length > 0 && (
+                    <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
+                      Disable All
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
-          {!isCompatible && (() => {
-            const allIds = [
-              ...models,
-              ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-            ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; }).map((m) => m.id);
-            const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
-            return (
-              <div className="flex gap-2">
-                {disabledModelIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
-                    Active All
-                  </Button>
-                )}
-                {activeIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
-                    Disable All
-                  </Button>
-                )}
-              </div>
-            );
-          })()}
         </div>
         {!!modelsTestError && (
-          <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>
+          <p className="text-xs text-red-500 px-4 py-2 break-words">{modelsTestError}</p>
         )}
         {renderModelsSection()}
-      </Card>
+      </div>
 
       {bulkActionModal}
 

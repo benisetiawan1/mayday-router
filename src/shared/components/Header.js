@@ -329,7 +329,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   );
 }
 
-function HeaderSearch() {
+export function HeaderSearch() {
   const visible = useHeaderSearchStore((s) => s.visible);
   const query = useHeaderSearchStore((s) => s.query);
   const placeholder = useHeaderSearchStore((s) => s.placeholder);
@@ -338,8 +338,8 @@ function HeaderSearch() {
   if (!visible) return null;
 
   return (
-    <div className="relative w-[160px] sm:w-[220px]">
-      <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">
+    <div className="ksearch">
+      <span className="material-symbols-outlined text-[16px] pointer-events-none">
         search
       </span>
       <input
@@ -347,17 +347,18 @@ function HeaderSearch() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
       />
-      {query && (
+      {query ? (
         <button
           type="button"
           onClick={() => setQuery("")}
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
+          className="text-text-subtle hover:text-text-main"
           aria-label="Clear search"
         >
           <span className="material-symbols-outlined text-[16px]">close</span>
         </button>
+      ) : (
+        <span className="kbd">⌘K</span>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Button, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import { Button, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import { useHeadroom } from "./useHeadroom";
@@ -248,13 +248,9 @@ export default function TokenSaverClient() {
           : pxpipeStatus.running
             ? "Running"
             : "Stopped";
-  const pxpipeChipClass =
-    pxpipeHealthy || pxpipeStatus.running
-      ? "bg-success/15 text-success"
-      : "bg-warning/15 text-warning";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="flex flex-col">
       <TokenSaverSettings
         rtkEnabled={rtkEnabled}
         handleRtkEnabled={handleRtkEnabled}
@@ -288,7 +284,6 @@ export default function TokenSaverClient() {
         handlePonytailLevel={handlePonytailLevel}
         ponytailLevel={ponytailLevel}
         handlePonytailEnabled={handlePonytailEnabled}
-        pxpipeChipClass={pxpipeChipClass}
         pxpipeStatusLabel={pxpipeStatusLabel}
         setShowPxpipeModal={setShowPxpipeModal}
         pxpipeStatus={pxpipeStatus}
@@ -296,61 +291,46 @@ export default function TokenSaverClient() {
         handlePxpipeEnabled={handlePxpipeEnabled}
       />
 
-      <Card id="guards">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">
-              shield
-            </span>
-            Guards & Shields
-          </h2>
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>06</b> · Guards & Shields</span>
         </div>
-        
-        {/* Loop Guard */}
-        <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Loop Guard</p>
-            <p className="text-sm text-text-muted">
-              Detects repeating tool call sequences and text-only planning loops.
-              Injects corrections to prevent infinite agent run-loops.
-            </p>
+        <div className="spec">
+          <div className="kv">
+            <div className="k">Loop Guard</div>
+            <div className="v">
+              <Toggle
+                checked={guards.loopGuard}
+                onChange={() => updateGuard("loopGuard", !guards.loopGuard)}
+                aria-label="Loop Guard"
+                title="Detects repeating tool call sequences and text-only planning loops. Injects corrections to prevent infinite agent run-loops."
+              />
+            </div>
           </div>
-          <Toggle
-            checked={guards.loopGuard}
-            onChange={() => updateGuard("loopGuard", !guards.loopGuard)}
-          />
-        </div>
-
-        {/* Circuit Breaker */}
-        <div className="flex items-center justify-between py-4 border-b border-border gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Circuit Breaker</p>
-            <p className="text-sm text-text-muted">
-              Temporarily halts upstream calls for offline or failing providers
-              to prevent spamming and conserve connection resource.
-            </p>
+          <div className="kv">
+            <div className="k">Circuit Breaker</div>
+            <div className="v">
+              <Toggle
+                checked={guards.circuitBreaker}
+                onChange={() => updateGuard("circuitBreaker", !guards.circuitBreaker)}
+                aria-label="Circuit Breaker"
+                title="Temporarily halts upstream calls for offline or failing providers to prevent spamming and conserve connection resource."
+              />
+            </div>
           </div>
-          <Toggle
-            checked={guards.circuitBreaker}
-            onChange={() => updateGuard("circuitBreaker", !guards.circuitBreaker)}
-          />
-        </div>
-
-        {/* Semaphore Limiter */}
-        <div className="flex items-center justify-between py-4 gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Semaphore (Concurrency Limiter)</p>
-            <p className="text-sm text-text-muted">
-              Enforces simultaneous request limits per provider account. Prevents
-              rate-limits (429) and account blockings.
-            </p>
+          <div className="kv">
+            <div className="k">Semaphore (Concurrency Limiter)</div>
+            <div className="v">
+              <Toggle
+                checked={guards.semaphore}
+                onChange={() => updateGuard("semaphore", !guards.semaphore)}
+                aria-label="Semaphore (Concurrency Limiter)"
+                title="Enforces simultaneous request limits per provider account. Prevents rate-limits (429) and account blockings."
+              />
+            </div>
           </div>
-          <Toggle
-            checked={guards.semaphore}
-            onChange={() => updateGuard("semaphore", !guards.semaphore)}
-          />
         </div>
-      </Card>
+      </div>
 
       <Modal
         isOpen={showHeadroomInstallModal}

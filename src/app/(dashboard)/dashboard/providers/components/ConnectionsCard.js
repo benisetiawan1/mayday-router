@@ -57,11 +57,10 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const proxyBadgeVariant = boundProxyPool?.isActive === true ? "success" : (boundProxyPoolId || hasLegacyProxy) ? "error" : "default";
 
   const modelLockUntil = Object.entries(connection)
-    .filter(([k]) => k.startsWith("modelLock_") || k.startsWith("modelExhausted_"))
-    .some(([k, v]) => k.startsWith("modelExhausted_") ? v === true : (v && new Date(v).getTime() > Date.now())) ? new Date(8640000000000000).toISOString() : 
-    Object.entries(connection)
-    .filter(([k]) => k.startsWith("modelLock_"))
-    .map(([, v]) => v).filter(Boolean).sort()[0] || null;
+    .filter(([k]) => k.startsWith("modelLock_") && !k.startsWith("modelLock___all"))
+    .map(([, v]) => v)
+    .filter(v => !!v)
+    .sort()[0] || null;
 
   useEffect(() => {
     let t = null;

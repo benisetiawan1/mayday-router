@@ -787,45 +787,37 @@ export default function ProviderLimits() {
 
   if (!connectionsLoading && !hasEligibleConnections) {
     return (
-      <Card padding="lg">
-        <div className="text-center py-12">
-          <span className="material-symbols-outlined text-[64px] text-text-muted opacity-20">
-            cloud_off
-          </span>
-          <h3 className="mt-4 text-lg font-semibold text-text-primary">
-            No Providers Connected
-          </h3>
-          <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
+      <div className="panel">
+        <div className="empty">
+          <div className="big">No Providers Connected</div>
+          <div className="sub">
             Connect to providers with OAuth to track your API quota limits and
             usage.
-          </p>
+          </div>
         </div>
-      </Card>
+      </div>
     );
   }
 
   if (!connectionsLoading && !hasVisibleConnections) {
     return (
-      <Card padding="lg">
-        <div className="text-center py-12">
-          <span className="material-symbols-outlined text-[64px] text-text-muted opacity-20">
-            {emptyState.icon}
-          </span>
-          <h3 className="mt-4 text-lg font-semibold text-text-primary">
-            {emptyState.title}
-          </h3>
-          <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
-            {emptyState.description}
-          </p>
+      <div className="panel">
+        <div className="empty">
+          <div className="big">{emptyState.title}</div>
+          <div className="sub">{emptyState.description}</div>
         </div>
-      </Card>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="panel">
+      <div className="panel-head">
+        <span className="t"><b>01</b> · Provider quota &amp; limits</span>
+      </div>
+      <div className="space-y-5">
       {/* Header Controls */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
+      <div className="flex flex-col gap-4 px-3 pt-3 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="relative">
             <button
@@ -1561,6 +1553,7 @@ export default function ProviderLimits() {
           setSelectedConnection(null);
         }}
       />
+      </div>
     </div>
   );
 }

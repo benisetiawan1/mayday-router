@@ -48,7 +48,7 @@ function getColorClasses(remainingPercentage) {
       text: "text-green-600 dark:text-green-400",
       bg: "bg-green-500",
       bgLight: "bg-green-500/10",
-      emoji: "🟢",
+      led: "ok",
     };
   }
 
@@ -57,7 +57,7 @@ function getColorClasses(remainingPercentage) {
       text: "text-yellow-600 dark:text-yellow-400",
       bg: "bg-yellow-500",
       bgLight: "bg-yellow-500/10",
-      emoji: "🟡",
+      led: "warn",
     };
   }
 
@@ -65,7 +65,7 @@ function getColorClasses(remainingPercentage) {
     text: "text-red-600 dark:text-red-400",
     bg: "bg-red-500",
     bgLight: "bg-red-500/10",
-    emoji: "🔴",
+    led: "down",
   };
 }
 
@@ -159,6 +159,7 @@ export default function QuotaTable({
             {currentPageRows.map((quota) => {
               const isUnlimited = quota.unlimited === true;
               const colors = getColorClasses(quota.remaining);
+              const usedPct = Math.min(Math.max(100 - quota.remaining, 0), 100);
               const countdown = formatResetTime(quota.resetAt);
               const resetDisplay = formatResetTimeDisplay(quota.resetAt);
 
@@ -169,7 +170,7 @@ export default function QuotaTable({
                 >
                   <td className={`${cellPad} w-[30%]`}>
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[10px] shrink-0">{colors.emoji}</span>
+                      <span className={`led ${colors.led} shrink-0`} />
                       <span className={`${nameText} font-medium text-text-primary truncate`}>
                         {quota.name}
                       </span>
@@ -179,13 +180,8 @@ export default function QuotaTable({
                   <td className={`${cellPad} w-[45%]`}>
                     <div className={compact ? "space-y-1" : "space-y-1.5"}>
                       {!isUnlimited && (
-                        <div className={`${compact ? "h-1" : "h-1.5"} rounded-full overflow-hidden border ${colors.bgLight} ${
-                          quota.remaining === 0 ? "border-black/10 dark:border-white/10" : "border-transparent"
-                        }`}>
-                          <div
-                            className={`h-full transition-all duration-300 ${colors.bg}`}
-                            style={{ width: `${Math.min(quota.remaining, 100)}%` }}
-                          />
+                        <div className={`crbar ${usedPct >= 70 ? "warn" : "ok"}`}>
+                          <i style={{ width: `${usedPct}%` }} />
                         </div>
                       )}
 

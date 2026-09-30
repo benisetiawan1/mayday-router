@@ -3,7 +3,7 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, Button, Input, Toggle, ModelSelectModal } from "@/shared/components";
+import { Button, Input, Toggle, ModelSelectModal } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 
@@ -175,6 +175,7 @@ export default function ComboDetailPage() {
     setTestError("");
     if (testResult?.audioUrl) { try { URL.revokeObjectURL(testResult.audioUrl); } catch {} }
     if (testResult?.imageUrl?.startsWith("blob:")) { try { URL.revokeObjectURL(testResult.imageUrl); } catch {} }
+    // eslint-disable-next-line react-hooks/purity -- event handler, not render; Date.now() is the right tool for measuring latency.
     const start = Date.now();
     try {
       const path = EXAMPLE_PATHS[combo.kind];
@@ -182,6 +183,7 @@ export default function ComboDetailPage() {
       const headers = { "Content-Type": "application/json" };
       if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
       const res = await fetch(`/api${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+      // eslint-disable-next-line react-hooks/purity -- event handler, not render; Date.now() is the right tool for measuring latency.
       const latencyMs = Date.now() - start;
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -240,59 +242,58 @@ export default function ComboDetailPage() {
   const backHref = getListingHref(combo.kind);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link href={backHref} className="text-text-muted hover:text-primary">
-            <span className="material-symbols-outlined">arrow_back</span>
-          </Link>
-          <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary">layers</span>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-text-muted">{kindLabel} Combo</p>
-            <code className="text-lg font-semibold font-mono">{combo.name}</code>
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t">
+            <Link href={backHref} className="material-symbols-outlined text-[16px] align-text-bottom" aria-label="Back">
+              arrow_back
+            </Link>
+            <b>01</b> · {kindLabel} Combo
+          </span>
+          <div className="acts">
+            <Button variant="danger" icon="delete" onClick={handleDelete}>
+              Delete
+            </Button>
           </div>
         </div>
-        <Button variant="outline" icon="delete" onClick={handleDelete} className="text-red-500 border-red-200 hover:bg-red-50">
-          Delete
-        </Button>
+
+        {/* Settings */}
+        <div className="frm">
+          <span className="fl">Combo Name</span>
+          <Input value={name} onChange={(e) => { setName(e.target.value); validateName(e.target.value); }} onBlur={handleSaveName} error={nameError} />
+          <span className="dim">Only letters, numbers, -, _ and .</span>
+        </div>
+        <div className="frm">
+          <span className="fl">Round Robin</span>
+          <div className="flex items-center gap-2">
+            <Toggle checked={roundRobin} onChange={handleToggleRoundRobin} />
+            <span className="dim">Rotate providers across requests instead of strict fallback order.</span>
+          </div>
+          <span />
+        </div>
       </div>
 
-      {/* Settings Card */}
-      <Card>
-        <h2 className="text-lg font-semibold mb-3">Settings</h2>
-        <div className="flex flex-col gap-4">
-          <div>
-            <Input label="Combo Name" value={name} onChange={(e) => { setName(e.target.value); validateName(e.target.value); }} onBlur={handleSaveName} error={nameError} />
-            <p className="text-[10px] text-text-muted mt-0.5">Only letters, numbers, -, _ and .</p>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Round Robin</p>
-              <p className="text-xs text-text-muted">Rotate providers across requests instead of strict fallback order.</p>
-            </div>
-            <Toggle checked={roundRobin} onChange={handleToggleRoundRobin} />
+      {/* Providers */}
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>02</b> · Providers</span>
+          <div className="acts">
+            <Button size="sm" icon="add" onClick={() => setShowPicker(true)}>Add Provider</Button>
           </div>
         </div>
-      </Card>
-
-      {/* Providers Card */}
-      <Card>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-semibold">Providers</h2>
-            <p className="text-xs text-text-muted">Tried in order (top-down) or rotated when round-robin is on.</p>
-          </div>
-          <Button size="sm" icon="add" onClick={() => setShowPicker(true)}>Add Provider</Button>
+        <div className="frm">
+          <span className="fl">Providers</span>
+          <span className="dim">Tried in order (top-down) or rotated when round-robin is on.</span>
+          <span />
         </div>
         {providers.length === 0 ? (
-          <div className="text-center py-6 border border-dashed border-border rounded-lg text-text-muted text-sm">
-            No providers yet.
+          <div className="empty">
+            <div className="sub">No providers yet.</div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 p-3">
             {providers.map((entry, idx) => {
               const { providerId, model } = parseModelEntry(entry);
               const p = AI_PROVIDERS[providerId];
@@ -327,25 +328,27 @@ export default function ComboDetailPage() {
             })}
           </div>
         )}
-      </Card>
+      </div>
 
-      {/* Test Example Card */}
+      {/* Test Example */}
       {combo.kind && examplePath && (
-        <Card>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
-            <h2 className="text-lg font-semibold">Test Example</h2>
-            <Button size="sm" icon="play_arrow" onClick={handleTest} disabled={testing || providers.length === 0}>
-              {testing ? "Running..." : "Run"}
-            </Button>
+        <div className="panel">
+          <div className="panel-head">
+            <span className="t"><b>03</b> · Test Example</span>
+            <div className="acts">
+              <Button size="sm" icon="play_arrow" onClick={handleTest} disabled={testing || providers.length === 0}>
+                {testing ? "Running..." : "Run"}
+              </Button>
+            </div>
           </div>
-          <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+          <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 overflow-x-auto whitespace-pre-wrap break-all">
             {curlExample}
           </pre>
           {testError && (
-            <p className="mt-3 text-xs text-red-500 break-words">{testError}</p>
+            <p className="mt-3 px-3 text-xs text-red-500 break-words">{testError}</p>
           )}
           {testResult && (
-            <div className="mt-3 flex flex-col gap-3">
+            <div className="mt-3 px-3 pb-3 flex flex-col gap-3">
               {testResult.latencyMs != null && (
                 <span className="text-[11px] text-text-muted">⚡ {testResult.latencyMs}ms</span>
               )}
@@ -357,7 +360,7 @@ export default function ComboDetailPage() {
                       Download
                     </a>
                   </div>
-                  <img src={testResult.imageUrl} alt="Generated" className="max-w-full rounded-lg border border-border" loading="lazy" decoding="async" />
+                  <img src={testResult.imageUrl} alt="Generated" className="max-w-full rounded border border-border" loading="lazy" decoding="async" />
                 </div>
               )}
               {testResult.audioUrl && (
@@ -372,26 +375,28 @@ export default function ComboDetailPage() {
                 </div>
               )}
               {testResult.json && (
-                <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
+                <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
                   {testResult.json}
                 </pre>
               )}
             </div>
           )}
-        </Card>
+        </div>
       )}
 
-      {/* Usage Logs Card */}
-      <Card>
-        <h2 className="text-lg font-semibold mb-3">Usage Logs</h2>
+      {/* Usage Logs */}
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>04</b> · Usage Logs</span>
+        </div>
         {logs.length === 0 ? (
           <p className="text-xs text-text-muted italic">No usage yet.</p>
         ) : (
-          <pre className="text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[400px] whitespace-pre-wrap">
+          <pre className="text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 overflow-auto max-h-[400px] whitespace-pre-wrap">
             {logs.join("\n")}
           </pre>
         )}
-      </Card>
+      </div>
 
       {showPicker && (
         <ModelSelectModal

@@ -3,9 +3,18 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Badge, Button } from "@/shared/components";
+import { Button } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
+
+const KIND_TABS = [
+  { id: "embedding", label: "Embedding", href: "/dashboard/media-providers/embedding" },
+  { id: "image", label: "Image", href: "/dashboard/media-providers/image" },
+  { id: "video", label: "Video", href: "/dashboard/media-providers/video" },
+  { id: "tts", label: "TTS", href: "/dashboard/media-providers/tts" },
+  { id: "stt", label: "STT", href: "/dashboard/media-providers/stt" },
+  { id: "web", label: "Web", href: "/dashboard/media-providers/web" },
+];
 
 function getEffectiveStatus(conn) {
   const isCooldown = Object.entries(conn).some(
@@ -15,14 +24,14 @@ function getEffectiveStatus(conn) {
 }
 
 function WebProviderCardStatus({ isNoAuth, allDisabled, total, connected, error }) {
-  if (isNoAuth) return <Badge variant="success" size="sm">Ready</Badge>;
-  if (allDisabled) return <Badge variant="default" size="sm">Disabled</Badge>;
-  if (total === 0) return <span className="text-xs text-text-muted">No connections</span>;
+  if (isNoAuth) return <span className="tag g"><span className="led ok"></span>Ready</span>;
+  if (allDisabled) return <span className="tag"><span className="led info"></span>Disabled</span>;
+  if (total === 0) return <span className="tag"><span className="led info"></span>No connections</span>;
   return (
     <>
-      {connected > 0 && <Badge variant="success" size="sm" dot>{connected} Connected</Badge>}
-      {error > 0 && <Badge variant="error" size="sm" dot>{error} Error</Badge>}
-      {connected === 0 && error === 0 && <Badge variant="default" size="sm">{total} Added</Badge>}
+      {connected > 0 && <span className="tag g"><span className="led ok"></span>{connected} Connected</span>}
+      {error > 0 && <span className="tag w"><span className="led warn"></span>{error} Error</span>}
+      {connected === 0 && error === 0 && <span className="tag"><span className="led info"></span>{total} Added</span>}
     </>
   );
 }
@@ -37,103 +46,77 @@ function ProviderCard({ provider, kind, connections }) {
   const allDisabled = total > 0 && providerConns.every((c) => c.isActive === false);
 
   return (
-    <Link href={`/dashboard/media-providers/${kind}/${provider.id}`} className="group">
-      <Card padding="xs" className={`h-full hover:bg-black/[0.01] dark:hover:bg-white/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}>
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className="size-8 rounded-lg flex items-center justify-center shrink-0"
-            style={{ backgroundColor: `${provider.color?.length > 7 ? provider.color : (provider.color ?? "#888") + "15"}` }}
-          >
+    <Link href={`/dashboard/media-providers/${kind}/${provider.id}`} className="group block">
+      <div className={`pcard ${allDisabled ? "opacity-50" : ""}`}>
+        <div className="top">
+          <div className="plogo" style={{ background: provider.color || "#475569" }}>
             <ProviderIcon
               src={`/providers/${provider.id}.webp`}
               alt={provider.name}
               size={30}
-              className="object-contain rounded-lg max-w-[30px] max-h-[30px]"
+              className="object-contain"
               fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
               fallbackColor={provider.color}
             />
           </div>
-          <div>
-            <h3 className="font-semibold text-sm">{provider.name}</h3>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap"><WebProviderCardStatus isNoAuth={isNoAuth} allDisabled={allDisabled} total={total} connected={connected} error={error} /></div>
-          </div>
+          <div className="nm">{provider.name}</div>
         </div>
-      </Card>
+        <div className="ct">
+          <WebProviderCardStatus isNoAuth={isNoAuth} allDisabled={allDisabled} total={total} connected={connected} error={error} />
+        </div>
+      </div>
     </Link>
   );
 }
 
-function ComboList({ combos }) {
+function ComboList({ combos, kind }) {
   if (combos.length === 0) {
-    return <p className="text-xs text-text-muted italic">No combos yet.</p>;
+    return <p className="dim">No combos yet.</p>;
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div className="hairline-grid">
       {combos.map((combo) => (
-        <Link key={combo.id} href={`/dashboard/media-providers/combo/${combo.id}`}>
-          <Card padding="xs" className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors cursor-pointer">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="material-symbols-outlined text-primary text-[18px]">layers</span>
-              <code className="text-sm font-mono font-medium flex-1 truncate">{combo.name}</code>
-              {/* Provider icons preview */}
-              <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
-                {combo.models.slice(0, 6).map((entry, i) => {
-                  const pid = typeof entry === "string" ? entry.split("/")[0] : "";
-                  const p = AI_PROVIDERS[pid];
-                  return (
-                    <div key={`${entry}-${i}`} title={p?.name || entry} className="size-5 rounded flex items-center justify-center" style={{ backgroundColor: `${(p?.color ?? "#888")}15` }}>
-                      <ProviderIcon
-                        src={`/providers/${pid}.webp`}
-                        alt={p?.name || pid}
-                        size={18}
-                        className="object-contain rounded max-w-[18px] max-h-[18px]"
-                        fallbackText={p?.textIcon || pid.slice(0, 2).toUpperCase()}
-                        fallbackColor={p?.color}
-                      />
-                    </div>
-                  );
-                })}
-                {combo.models.length > 6 && (
-                  <span className="text-[10px] text-text-muted ml-1">+{combo.models.length - 6}</span>
-                )}
+        <Link key={combo.id} href={`/dashboard/media-providers/combo/${combo.id}`} className="block">
+          <div className="pcard">
+            <div className="top">
+              <div className="plogo" style={{ background: "#2f3238" }}>
+                <span className="material-symbols-outlined text-[18px]">layers</span>
               </div>
-              <span className="text-[11px] text-text-muted shrink-0">{combo.models.length}</span>
-              <span className="material-symbols-outlined text-text-muted text-[16px]">chevron_right</span>
+              <div>
+                <div className="nm">{combo.name}</div>
+                <div className="sid">{combo.models.length} models</div>
+              </div>
             </div>
-          </Card>
+          </div>
         </Link>
       ))}
     </div>
   );
 }
 
-function Section({ title, icon, kind, providers, connections, combos, onCreateCombo }) {
+function Section({ title, kind, providers, connections, combos, onCreateCombo }) {
   return (
     <div>
-      {/* Header — title left, Create Combo right */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="material-symbols-outlined text-primary">{icon}</span>
-          <h2 className="text-base font-semibold">{title}</h2>
-          <span className="text-xs text-text-muted">({providers.length} providers · {combos.length} combos)</span>
+      <div className="panel-head">
+        <span className="t">{title}</span>
+        <div className="acts">
+          <span className="dim">({providers.length} providers · {combos.length} combos)</span>
+          <Button size="sm" icon="add" onClick={onCreateCombo}>Create Combo</Button>
         </div>
-        <Button size="sm" icon="add" onClick={onCreateCombo}>Create Combo</Button>
       </div>
 
-      {/* Combos — top */}
       {combos.length > 0 && (
-        <div className="mb-4">
-          <ComboList combos={combos} />
+        <div className="p-3">
+          <ComboList combos={combos} kind={kind} />
         </div>
       )}
 
-      {/* Providers grid — bottom */}
       {providers.length === 0 ? (
-        <div className="text-center py-8 border border-dashed border-border rounded-xl text-text-muted text-sm">
-          No providers.
+        <div className="empty">
+          <div className="sub">No providers.</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="hairline-grid">
           {providers.map((p) => (
             <ProviderCard key={p.id} provider={p} kind={kind} connections={connections} />
           ))}
@@ -189,21 +172,35 @@ export default function WebProvidersPage() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
-      <Section
-        title="Web Search" icon="search" kind="webSearch"
-        providers={searchProviders} connections={connections} combos={searchCombos}
-        onCreateCombo={() => handleCreateCombo("webSearch")}
-      />
+    <div className="flex flex-col">
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>01</b> · Media providers</span>
+          <div className="acts">
+            <div className="seg">
+              {KIND_TABS.map((tab) => (
+                <Link key={tab.id} href={tab.href} className={tab.id === "web" ? "on" : ""}>
+                  {tab.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
 
-      {/* Divider between sections */}
-      <div className="border-t border-border" />
+        <Section
+          title="Web Search" kind="webSearch"
+          providers={searchProviders} connections={connections} combos={searchCombos}
+          onCreateCombo={() => handleCreateCombo("webSearch")}
+        />
 
-      <Section
-        title="Web Fetch" icon="travel_explore" kind="webFetch"
-        providers={fetchProviders} connections={connections} combos={fetchCombos}
-        onCreateCombo={() => handleCreateCombo("webFetch")}
-      />
+        <div className="border-t border-border" />
+
+        <Section
+          title="Web Fetch" kind="webFetch"
+          providers={fetchProviders} connections={connections} combos={fetchCombos}
+          onCreateCombo={() => handleCreateCombo("webFetch")}
+        />
+      </div>
     </div>
   );
 }

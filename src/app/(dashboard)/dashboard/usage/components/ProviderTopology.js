@@ -1,509 +1,265 @@
 "use client";
 
-import PropTypes from "prop-types";
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import Image from "next/image";
-
-const EMPTY_PROVIDERS = [];
-const EMPTY_REQUESTS = [];
-import {
-  ReactFlow,
-  Handle,
-  Position,
-  Controls,
-  BaseEdge,
-  getBezierPath,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { useEffect, useMemo, useState } from "react";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
 
-// Force-stop FE animation if a provider stays active longer than this
-const FE_ACTIVE_TIMEOUT_MS = 60000;
-const FE_ACTIVE_TICK_MS = 1000;
-const FIT_VIEW_OPTS = { padding: 0.2, duration: 200 };
+const EMPTY = [];
 
-// Kame + electric particles along active edges
-const KAME_PARTICLE_COUNT = 6;
-const SPARK_COUNT = 5;
-
-function getProviderConfig(providerId) {
-  return AI_PROVIDERS[providerId] || { color: "#6b7280", name: providerId };
+function labelFromKey(key) {
+  const c = AI_PROVIDERS[key];
+  return (c && c.name) || key;
 }
 
-function getProviderImageUrl(providerId) {
-  return getProviderIconSrc(providerId);
+function clock(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour12: false });
 }
 
-// Custom provider node - rectangle with image + name
-function ProviderNode({ data }) {
-  const { providerId, label, color, imageUrl, textIcon, active } = data;
-  const [imgError, setImgError] = useState(false);
+// Stable per-provider hue (v2.1 uses fixed .ds/.mi/.or classes; ours is
+// data-driven so any provider gets a stable distinct color).
+function provColorClass(key) {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return `c${h % 5}`;
+}
+
+const fnum = (n) => (n || 0).toLocaleString("en-US");
+
+// v2.1-style live row, but every visible state is real:
+// phase/LED from pipeline events, elapsed from real startedAt,
+// tokens only when provider-reported (usage in SSE chunk), else real bytes.
+function LiveRow({ r, now, maxBytes, hl }) {
+  const elapsed = Math.max(0, (now - r.startedAt) / 1000);
+  const sinceFinal = r.updatedAt ? now - r.updatedAt : 0;
+  // DONE/ERROR stays visible ~1.7s, then fades out (removed at 2.2s by filter)
+  const isFinal = r.phase === "done" || r.phase === "error" || r.phase === "aborted";
+  const dying = isFinal && sinceFinal > 1700;
+  const phase = r.phase;
+  const meta = {
+    received: { txt: "REQ IN", cls: "req", led: "warn pulse", bar: 4 },
+    routed: { txt: `ROUTE · ${r.account || "…"}`, cls: "route", led: "warn", bar: 12 },
+    streaming: { txt: "ANSWERING", cls: "stream", led: "ok pulse", bar: null },
+    done: { txt: "DONE", cls: "done", led: "ok", bar: 100 },
+    error: { txt: "ERROR", cls: "err", led: "down", bar: 100 },
+    aborted: { txt: "ABORTED", cls: "err", led: "warn", bar: 100 },
+  }[phase] || { txt: phase, cls: "req", led: "warn", bar: 4 };
+
+  // While streaming, the bar tracks real received bytes relative to the
+  // largest transfer currently in flight — movement is real, not a timer.
+  const barW = meta.bar ?? Math.min(96, 12 + (84 * Math.log10((r.bytes || 0) + 1)) / Math.log10((maxBytes || 1) + 1));
+  const fb = r.fallbackFrom;
+
   return (
-    <div
-      className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border-2 transition-all duration-300 bg-bg"
-      style={{
-        borderColor: active ? color : "var(--color-border)",
-        boxShadow: active ? `0 0 16px ${color}40` : "none",
-        minWidth: "150px",
-      }}
-    >
-      <Handle type="target" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
-      <Handle type="target" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
-      <Handle type="target" position={Position.Left} id="left" className="!bg-transparent !border-0 !w-0 !h-0" />
-      <Handle type="target" position={Position.Right} id="right" className="!bg-transparent !border-0 !w-0 !h-0" />
+    <div className={`live-row${dying ? " dying" : ""}${hl ? " hl" : ""}`}>
+      <span className={`led ${meta.led}`} />
+      <span className={`pf ${provColorClass((r.provider || "").toLowerCase())}`}>{labelFromKey(r.provider)}</span>
+      <span className="mono dim md">{r.model}</span>
+      <span className={`ph ${meta.cls}`}>
+        {fb ? <><span className="ph err">{fb.status || "ERR"} → FB</span> </> : null}
+        {meta.txt}
+      </span>
+      <div className="bar"><i style={{ width: `${barW}%` }} /></div>
+      <span className="toks">{r.tokensOut > 0 ? `${fnum(r.tokensOut)} tok` : `${fnum(r.bytes || 0)}B`}</span>
+      <span className="eta mono">{elapsed.toFixed(1)}s</span>
+    </div>
+  );
+}
 
-      {/* Provider icon */}
-      <div
-        className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
-        style={{ backgroundColor: `${color}15` }}
-      >
-        {providerId === "a6api" || providerId === "a6api-cli" ? (
-          <span
-            className="a6api-custom-logo"
-            style={{
-              width: "24px",
-              height: "24px",
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
-              position: "relative",
-              overflow: "hidden",
-              color: "var(--navy, #1F2937)",
-              fontSize: "9px",
-              fontWeight: "bold",
-              letterSpacing: 0,
-              background: "radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .38), transparent 22%), conic-gradient(from 210deg, #3157ff, #16b8a6, #74c86a, #3157ff)",
-              boxShadow: "0 4px 8px #3157ff38",
-              isolation: "isolate",
-            }}
-          >
-            <span>A6</span>
+// Live flow panel for usage "02 · Provider topology".
+// Stacked tree: CLIENT → MAYDAY → per-provider branches → models.
+// Only providers/models that actually received traffic (in-flight or recent)
+// are rendered — idle providers stay hidden. Real SSE state only.
+// v2.1 "04 · Request feed" — log lines from real events (liveFeed), falling
+// back to the retained recent-requests ring when no live traffic yet.
+export function RequestFeed({ liveFeed = EMPTY, recentRequests = EMPTY }) {
+  const recent = useMemo(() => recentRequests.slice(-8).reverse(), [recentRequests]);
+  return (
+    <div className="cr-stream" style={{ borderTop: 0 }}>
+      {liveFeed.length === 0 && recent.length === 0 ? (
+        <div className="stream-empty">No completed requests</div>
+      ) : liveFeed.length > 0 ? (
+        liveFeed.map((e, i) => {
+          if (e.kind === "fallback") {
+            return (
+              <div key={`fb-${e.ts}-${i}`} className="fline">
+                <span className="ts">{clock(e.ts)}</span>
+                <span className="feed-err">account {e.from || "?"} unavailable ({e.status || "err"})</span>
+                <span className="dim">→ fallback → {e.to || "next account"}</span>
+              </div>
+            );
+          }
+          if (e.kind === "complete") {
+            return (
+              <div key={`cp-${e.ts}-${i}`} className="fline">
+                <span className="ts">{clock(e.ts)}</span>
+                <span className={`pf ${provColorClass((e.provider || "").toLowerCase())}`}>{labelFromKey(e.provider)}</span>
+                <span className="mono dim">{e.model}</span>
+                <span className="dim">· STREAM complete · {fnum(e.ms)}ms · in={fnum(e.tokensIn)} out={fnum(e.tokensOut)}</span>
+              </div>
+            );
+          }
+          return (
+            <div key={`er-${e.ts}-${i}`} className="fline">
+              <span className="ts">{clock(e.ts)}</span>
+              <span className={`pf ${provColorClass((e.provider || "").toLowerCase())}`}>{labelFromKey(e.provider)}</span>
+              <span className="mono dim">{e.model}</span>
+              <span className="feed-err">· {e.kind === "aborted" ? "client aborted" : "error"} · {fnum(e.ms)}ms</span>
+            </div>
+          );
+        })
+      ) : (
+        recent.map((r, i) => (
+          <div key={`${r.timestamp}-${r.model}-${i}`} className="fline">
+            <span className="ts">{clock(r.timestamp)}</span>
+            <span className={`pf ${provColorClass((r.provider || "").toLowerCase())}`}>{labelFromKey(r.provider)}</span>
+            <span className="mono dim">{r.model}</span>
+            <span className="dim">· in={fnum(r.promptTokens)} out={fnum(r.completionTokens)}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+export default function ProviderTopology({ providers = EMPTY, activeRequests = EMPTY, recentRequests = EMPTY, liveRequests = EMPTY }) {
+  const [hoverProv, setHoverProv] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Tick while anything is on screen (in-flight rows for elapsed, finished
+  // rows so their 2.2s fade-out filter actually re-evaluates).
+  const hasLive = liveRequests.length > 0;
+  useEffect(() => {
+    if (!hasLive) return;
+    const t = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(t);
+  }, [hasLive]);
+
+  const maxBytes = useMemo(
+    () => liveRequests.reduce((m, r) => Math.max(m, r.bytes || 0), 0),
+    [liveRequests]
+  );
+
+  // Finished rows fade out client-side after a short hold: the server prunes
+  // lazily on the next push, so without this a DONE row would linger when idle.
+  const visibleLive = useMemo(
+    () => liveRequests.filter((r) => {
+      const finalPhase = r.phase === "done" || r.phase === "error" || r.phase === "aborted";
+      return !finalPhase || now - r.updatedAt < 2200;
+    }),
+    [liveRequests, now]
+  );
+
+  // providers with a live (non-final) request right now
+  const liveProviders = useMemo(() => {
+    const s = new Set();
+    for (const r of liveRequests) {
+      if (r.phase === "done" || r.phase === "error" || r.phase === "aborted") continue;
+      if (r.provider) s.add(r.provider.toLowerCase());
+    }
+    return s;
+  }, [liveRequests]);
+
+  // traffic: providerKey -> { label, activeTotal, models: Map(model -> { active, seen }) }
+  const traffic = useMemo(() => {
+    const map = new Map();
+    const ensure = (provKey) => {
+      if (!provKey) return null;
+      const k = provKey.toLowerCase();
+      if (!map.has(k)) map.set(k, { key: k, label: labelFromKey(k), activeTotal: 0, models: new Map() });
+      return map.get(k);
+    };
+    for (const r of activeRequests) {
+      const entry = ensure(r.provider);
+      if (!entry || !r.model) continue;
+      entry.activeTotal += r.count || 0;
+      const m = entry.models.get(r.model) || { active: 0, seen: false };
+      m.active += r.count || 0;
+      m.seen = true;
+      entry.models.set(r.model, m);
+    }
+    for (const r of recentRequests) {
+      const entry = ensure(r.provider);
+      if (!entry || !r.model) continue;
+      const m = entry.models.get(r.model) || { active: 0, seen: false };
+      m.seen = true;
+      entry.models.set(r.model, m);
+    }
+    return Array.from(map.values())
+      .map((e) => ({ ...e, models: Array.from(e.models.entries()) }))
+      .sort((a, b) => b.activeTotal - a.activeTotal || b.models.length - a.models.length);
+  }, [activeRequests, recentRequests]);
+
+  const totalActive = useMemo(
+    () => activeRequests.reduce((s, r) => s + (r.count || 0), 0),
+    [activeRequests]
+  );
+
+  return (
+    <div className="cr-flow">
+      {/* 1 · stacked flow tree */}
+      <div className="flowtree">
+        <div className="ft-head">
+          <span className="fnode">Client</span>
+          <span className="flink hot" aria-hidden="true" />
+          <span className="fnode core">
+            Mayday
+            {totalActive > 0 && <b className="fcount">{totalActive}</b>}
           </span>
-        ) : imageUrl && !imgError ? (
-          <Image
-            src={imageUrl}
-            alt={label}
-            className="w-6 h-6 rounded-sm object-contain"
-            width={24}
-            height={24}
-            unoptimized
-            onError={() => {
-              const m = imageUrl?.match(/^\/providers\/([^/]+)\.(png|webp)$/i);
-              if (m) markProviderIconMissing(m[1]);
-              setImgError(true);
-            }}
-          />
-        ) : (
-          <span className="text-sm font-bold" style={{ color }}>{textIcon}</span>
+          {traffic.length > 0 && <span className="flink hot" aria-hidden="true" />}
+          {traffic.length > 0 && (
+            <div className="ft-spine">
+              {traffic.map((entry) => {
+                const hl = hoverProv === entry.key;
+                return (
+                  <div
+                    key={entry.key}
+                    className={`ft-row${hl ? " hl" : ""}`}
+                    onMouseEnter={() => setHoverProv(entry.key)}
+                    onMouseLeave={() => setHoverProv(null)}
+                  >
+                    <span className={`fchip prov${entry.activeTotal > 0 || liveProviders.has(entry.key) ? " hot" : ""}`}>
+                      <span className="dot" />
+                      {entry.label}
+                      {entry.activeTotal > 0 && <span className="fchip-cnt">{entry.activeTotal}</span>}
+                    </span>
+                    <span className="ft-models">
+                      {entry.models.map(([model, m]) => (
+                        <span key={model} className={`fchip sm${m.active > 0 ? " hot" : ""}`}>
+                          {model}
+                          {m.active > 1 ? ` ×${m.active}` : ""}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {traffic.length === 0 && (
+          <div className="stream-empty" style={{ paddingTop: 10 }}>No provider traffic yet</div>
         )}
       </div>
 
-      {/* Provider name */}
-      <span
-        className="text-base font-medium truncate"
-        style={{ color: active ? color : "var(--color-text)" }}
-      >
-        {label}
-      </span>
-
-      {/* Active indicator */}
-      {active && (
-        <span className="relative flex h-2 w-2 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: color }} />
-          <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: color }} />
-        </span>
-      )}
-    </div>
-  );
-}
-
-
-// Center Mayday node — pulse/glow on card only (no expanding rings)
-function RouterNode({ data }) {
-  const powering = (data.activeCount || 0) > 0;
-  return (
-    <div
-      className={`relative z-[1] flex items-center justify-center px-5 py-3 rounded-xl border-2 min-w-[130px] ${
-        powering
-          ? "topology-router-core border-yellow-300 bg-gradient-to-br from-primary/30 via-yellow-400/20 to-cyan-400/25"
-          : "border-primary bg-primary/5 shadow-md"
-      }`}
-    >
-      <Handle type="source" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
-      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
-      <Handle type="source" position={Position.Left} id="left" className="!bg-transparent !border-0 !w-0 !h-0" />
-      <Handle type="source" position={Position.Right} id="right" className="!bg-transparent !border-0 !w-0 !h-0" />
-
-      <img
-        src="/favicon.svg"
-        alt="Mayday"
-        className={`w-6 h-6 mr-2 ${powering ? "topology-router-icon" : ""}`}
-        loading="lazy"
-        decoding="async"
-        width={24}
-        height={24}
-      />
-      <span className={`text-sm font-bold ${powering ? "topology-router-label text-yellow-300" : "text-primary"}`}>
-        Mayday
-      </span>
-      {data.activeCount > 0 && (
-        <span className="ml-2 px-1.5 py-0.5 rounded-full bg-yellow-400 text-black text-xs font-bold topology-router-badge">
-          {data.activeCount}
-        </span>
-      )}
-    </div>
-  );
-}
-
-
-// Active: electric kame beam (multi-layer stroke + sparks). Idle/last/error: solid BaseEdge.
-function TopologyEdge({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  style = {},
-  data,
-}) {
-  const [edgePath] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
-  const active = !!data?.active;
-  const stroke = style.stroke || "var(--color-border)";
-  const filterId = `topo-electric-${id}`;
-
-  if (!active) {
-    return <BaseEdge id={id} path={edgePath} style={{ ...style, stroke }} />;
-  }
-
-  return (
-    <g className="topology-edge-electric">
-      <defs>
-        <filter id={filterId} x="-40%" y="-40%" width="180%" height="180%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="2" result="noise">
-            <animate attributeName="baseFrequency" values="0.8;1.4;0.8" dur="0.25s" repeatCount="indefinite" />
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="3.5" xChannelSelector="R" yChannelSelector="G" />
-        </filter>
-      </defs>
-      {/* Outer electric halo */}
-      <path
-        d={edgePath}
-        fill="none"
-        stroke="#22d3ee"
-        strokeWidth={10}
-        strokeOpacity={0.35}
-        strokeLinecap="round"
-        filter={`url(#${filterId})`}
-        className="topology-edge-halo"
-      />
-      {/* Mid plasma */}
-      <path
-        d={edgePath}
-        fill="none"
-        stroke="#4ade80"
-        strokeWidth={5}
-        strokeOpacity={0.85}
-        strokeLinecap="round"
-        filter={`url(#${filterId})`}
-        className="topology-edge-plasma"
-      />
-      {/* Hot white core */}
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={{ stroke: "#f8fafc", strokeWidth: 2.2, opacity: 1 }}
-        className="topology-edge-kame"
-      />
-      {/* Energy orbs */}
-      {Array.from({ length: KAME_PARTICLE_COUNT }, (_, i) => (
-        <circle
-          key={`${id}-p-${i}`}
-          r={i % 2 === 0 ? 4 : 2.5}
-          fill={i % 3 === 0 ? "#fde047" : i % 3 === 1 ? "#67e8f9" : "#fff"}
-          opacity={0.95}
-          style={{ filter: "drop-shadow(0 0 4px #22d3ee)" }}
-        >
-          <animateMotion
-            dur={`${0.4 + i * 0.08}s`}
-            repeatCount="indefinite"
-            path={edgePath}
-            begin={`${i * 0.09}s`}
-          />
-        </circle>
-      ))}
-      {/* Electric sparks (short-lived blink along path) */}
-      {Array.from({ length: SPARK_COUNT }, (_, i) => (
-        <circle
-          key={`${id}-s-${i}`}
-          r={1.8}
-          fill="#e0f2fe"
-          opacity={0}
-        >
-          <animate
-            attributeName="opacity"
-            values="0;1;0;0;1;0"
-            dur={`${0.35 + (i % 3) * 0.1}s`}
-            begin={`${i * 0.07}s`}
-            repeatCount="indefinite"
-          />
-          <animateMotion
-            dur={`${0.28 + i * 0.05}s`}
-            repeatCount="indefinite"
-            path={edgePath}
-            begin={`${i * 0.11}s`}
-          />
-        </circle>
-      ))}
-    </g>
-  );
-}
-
-TopologyEdge.propTypes = {
-  id: PropTypes.string,
-  sourceX: PropTypes.number,
-  sourceY: PropTypes.number,
-  targetX: PropTypes.number,
-  targetY: PropTypes.number,
-  sourcePosition: PropTypes.string,
-  targetPosition: PropTypes.string,
-  style: PropTypes.object,
-  data: PropTypes.object,
-};
-
-const nodeTypes = { provider: ProviderNode, router: RouterNode };
-const edgeTypes = { topology: TopologyEdge };
-
-// Place N nodes evenly along an ellipse around the router center.
-function buildLayout(providers, activeSet, lastSet, errorSet) {
-  const nodeW = 180;
-  const nodeH = 30;
-  const routerW = 120;
-  const routerH = 44;
-  const nodeGap = 24;
-
-  const count = providers.length;
-
-  // Compute rx so arc spacing between nodes >= nodeW + nodeGap
-  const minRx = ((nodeW + nodeGap) * count) / (2 * Math.PI);
-  const rx = Math.max(320, minRx);
-  const ry = Math.max(200, rx * 0.55); // ellipse ratio ~0.55
-  if (count === 0) {
-    return {
-      nodes: [{ id: "router", type: "router", position: { x: 0, y: 0 }, data: { activeCount: 0 }, draggable: false }],
-      edges: [],
-    };
-  }
-
-  const nodes = [];
-  const edges = [];
-
-  nodes.push({
-    id: "router",
-    type: "router",
-    position: { x: -routerW / 2, y: -routerH / 2 },
-    data: { activeCount: activeSet.size },
-    draggable: false,
-  });
-
-  const edgeStyle = (active, last, error) => {
-    if (error) return { stroke: "#ef4444", strokeWidth: 2.5, opacity: 0.9 };
-    if (active) return { stroke: "#22d3ee", strokeWidth: 3.5, opacity: 1 };
-    if (last) return { stroke: "#f59e0b", strokeWidth: 2, opacity: 0.7 };
-    return { stroke: "var(--color-border)", strokeWidth: 1, opacity: 0.3 };
-  };
-
-  providers.forEach((p, i) => {
-    const config = getProviderConfig(p.provider);
-    const active = activeSet.has(p.provider?.toLowerCase());
-    const last = !active && lastSet.has(p.provider?.toLowerCase());
-    const error = !active && errorSet.has(p.provider?.toLowerCase());
-    const nodeId = `provider-${p.provider}`;
-    const data = {
-      providerId: p.provider,
-      label: (config.name !== p.provider ? config.name : null) || p.nodeName || p.name || p.provider,
-      color: config.color || "#6b7280",
-      imageUrl: getProviderImageUrl(p.provider),
-      textIcon: config.textIcon || (p.provider || "?").slice(0, 2).toUpperCase(),
-      active,
-    };
-
-    // Distribute evenly starting from top (−π/2), clockwise
-    const angle = -Math.PI / 2 + (2 * Math.PI * i) / count;
-    const cx = rx * Math.cos(angle);
-    const cy = ry * Math.sin(angle);
-
-    // Pick router handle closest to the node direction
-    let sourceHandle, targetHandle;
-    if (Math.abs(angle + Math.PI / 2) < Math.PI / 4 || Math.abs(angle - 3 * Math.PI / 2) < Math.PI / 4) {
-      sourceHandle = "top"; targetHandle = "bottom";
-    } else if (Math.abs(angle - Math.PI / 2) < Math.PI / 4) {
-      sourceHandle = "bottom"; targetHandle = "top";
-    } else if (cx > 0) {
-      sourceHandle = "right"; targetHandle = "left";
-    } else {
-      sourceHandle = "left"; targetHandle = "right";
-    }
-
-    nodes.push({
-      id: nodeId,
-      type: "provider",
-      position: { x: cx - nodeW / 2, y: cy - nodeH / 2 },
-      data,
-      draggable: false,
-    });
-
-    edges.push({
-      id: `e-${nodeId}`,
-      type: "topology",
-      source: "router",
-      sourceHandle,
-      target: nodeId,
-      targetHandle,
-      // Built-in animated uses stroke-dasharray (CPU-heavy); use particle beam instead
-      animated: false,
-      data: { active },
-      style: edgeStyle(active, last, error),
-    });
-  });
-
-  return { nodes, edges };
-}
-
-export default function ProviderTopology({ providers = EMPTY_PROVIDERS, activeRequests = EMPTY_REQUESTS, lastProvider = "", errorProvider = "" }) {
-  // Serialize to stable string keys so useMemo only re-runs when values actually change
-  const activeKey = useMemo(
-    () => activeRequests.flatMap((r) => { const p = r.provider?.toLowerCase(); return p ? [p] : []; }).sort().join(","),
-    [activeRequests]
-  );
-  const lastKey = lastProvider?.toLowerCase() || "";
-  const errorKey = errorProvider?.toLowerCase() || "";
-
-  const rawActiveSet = useMemo(() => new Set(activeKey ? activeKey.split(",") : []), [activeKey]);
-  const lastSet = useMemo(() => new Set(lastKey ? [lastKey] : []), [lastKey]);
-  const errorSet = useMemo(() => new Set(errorKey ? [errorKey] : []), [errorKey]);
-
-  // Track firstSeen per active provider; drop provider if running too long (BE stuck)
-  const [firstSeen, setFirstSeen] = useState({});
-  const [activeSet, setActiveSet] = useState(new Set());
-  const [tick, setTick] = useState(0);
-
-  // Tracks when each provider became active so we can drop providers that
-  // are stuck (e.g. backend never marked them done). State (not ref) so
-  // downstream useEffects can react to changes.
-  useEffect(() => {
-    const now = Date.now();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- updater pattern avoids stale state; cascading renders are intentional here.
-    setFirstSeen((prev) => {
-      const next = { ...prev };
-      for (const p of rawActiveSet) {
-        if (!next[p]) next[p] = now;
-      }
-      for (const p of Object.keys(next)) {
-        if (!rawActiveSet.has(p)) delete next[p];
-      }
-      return next;
-    });
-  }, [rawActiveSet]);
-
-  useEffect(() => {
-    if (rawActiveSet.size === 0) return;
-    const id = setInterval(() => setTick((t) => t + 1), FE_ACTIVE_TICK_MS);
-    return () => clearInterval(id);
-  }, [rawActiveSet]);
-
-  // Compute filtered activeSet in an effect so Date.now() is not called
-  // during render. tick + firstSeen + rawActiveSet all trigger recompute.
-  useEffect(() => {
-    void tick; // re-run on tick
-    const now = Date.now();
-    const filtered = new Set();
-    for (const p of rawActiveSet) {
-      const ts = firstSeen[p];
-      if (!ts || now - ts < FE_ACTIVE_TIMEOUT_MS) filtered.add(p);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Date.now() is not allowed during render; computed in effect so render stays pure.
-    setActiveSet(filtered);
-  }, [rawActiveSet, tick, firstSeen]);
-
-  const { nodes, edges } = useMemo(
-    () => buildLayout(providers, activeSet, lastSet, errorSet),
-    [providers, activeSet, lastSet, errorSet]
-  );
-
-  // Stable key — only remount when provider list changes
-  const providersKey = useMemo(
-    () => providers.map((p) => p.provider).sort().join(","),
-    [providers]
-  );
-
-  const rfInstance = useRef(null);
-  const containerRef = useRef(null);
-  const onInit = useCallback((instance) => {
-    rfInstance.current = instance;
-    setTimeout(() => instance.fitView(FIT_VIEW_OPTS), 50);
-  }, []);
-
-  // Re-fit on container resize
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      if (rfInstance.current) rfInstance.current.fitView(FIT_VIEW_OPTS);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Re-fit when node count/layout changes
-  useEffect(() => {
-    if (rfInstance.current) {
-      const id = setTimeout(() => rfInstance.current.fitView(FIT_VIEW_OPTS), 50);
-      return () => clearTimeout(id);
-    }
-  }, [nodes.length]);
-
-  return (
-    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-bg-subtle/30 sm:h-[480px]">
-      {providers.length === 0 ? (
-        <div className="h-full flex items-center justify-center text-text-muted text-sm">
-          No providers connected
+      {/* 2 · active requests — one row per REAL in-flight request (liveRequests) */}
+      <div className="cr-stream">
+        <div className="stream-head">
+          Active requests
+          <span className="tag b">{liveRequests.length > 0 ? liveRequests.length : totalActive} live</span>
         </div>
-      ) : (
-        <ReactFlow
-          key={providersKey}
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          fitViewOptions={FIT_VIEW_OPTS}
-          minZoom={0.1}
-          maxZoom={2}
-          onInit={onInit}
-          proOptions={{ hideAttribution: true }}
-          panOnDrag
-          zoomOnScroll
-          zoomOnPinch
-          zoomOnDoubleClick
-          preventScrolling={false}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-        >
-          <Controls showInteractive={false} className="react-flow-controls-custom" />
-        </ReactFlow>
-      )}
+        {visibleLive.length === 0 ? (
+          <div className="stream-empty">No in-flight requests — waiting for traffic…</div>
+        ) : (
+          visibleLive.map((r) => (
+            <LiveRow
+              key={r.id}
+              r={r}
+              now={now}
+              maxBytes={maxBytes}
+              hl={hoverProv && (r.provider || "").toLowerCase() === hoverProv}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
-

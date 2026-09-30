@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useNotificationStore } from "@/store/notificationStore";
 import { preloadProviderIcons } from "@/shared/utils/providerIcon";
 import Sidebar from "../Sidebar";
-import Header from "../Header";
-
+import StatusStrip from "../StatusStrip";
 
 function getToastStyle(type) {
   if (type === "success") {
@@ -34,7 +33,6 @@ function getToastStyle(type) {
 }
 
 export default function DashboardLayout({ children }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
@@ -43,23 +41,15 @@ export default function DashboardLayout({ children }) {
     preloadProviderIcons();
   }, []);
 
-  useEffect(() => {
-    if (!sidebarOpen) return;
-    const onEsc = (e) => { if (e.key === "Escape") setSidebarOpen(false); };
-    document.addEventListener("keydown", onEsc);
-    return () => document.removeEventListener("keydown", onEsc);
-  }, [sidebarOpen]);
-
-
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-bg">
-      <div className="fixed top-4 right-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2">
+    <div className="flex flex-col h-screen w-full overflow-hidden bg-bg">
+      <div className="fixed bottom-4 right-4 z-[80] flex w-[min(92vw,420px)] flex-col gap-2">
         {notifications.map((n) => {
           const style = getToastStyle(n.type);
           return (
             <div
               key={n.id}
-              className={`rounded-lg border px-3 py-2 shadow-lg backdrop-blur-sm ${style.wrapper}`}
+              className={`cr-toast normal-case ${style.wrapper}`}
             >
               <div className="flex items-start gap-2">
                 <span className="material-symbols-outlined text-[18px] leading-5">{style.icon}</span>
@@ -82,36 +72,15 @@ export default function DashboardLayout({ children }) {
           );
         })}
       </div>
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/20 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
 
-      {/* Sidebar - Desktop */}
-      <div className="hidden lg:flex">
-        <Sidebar />
-      </div>
+      <Sidebar />
 
-      {/* Sidebar - Mobile */}
-      <div
-        className={`fixed inset-y-0 left-0 z-50 transform lg:hidden transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
-      </div>
+      <StatusStrip />
 
-      {/* Main content */}
-      <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate">
-        {/* Faint grid background */}
+      <main className="flex flex-col flex-1 min-h-0 relative transition-colors duration-300 isolate">
         <div className="landing-grid absolute inset-0 pointer-events-none -z-10" aria-hidden="true" />
-        <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "p-6 lg:p-10"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
-          <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>{children}</div>
+        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "px-5 pt-[18px] pb-10"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
+          <div key={pathname} className={`cr-content ${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : ""}`}>{children}</div>
         </div>
       </main>
     </div>

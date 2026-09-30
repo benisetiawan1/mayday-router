@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Card from "./Card";
 
 export default function RequestLogger() {
   const [logs, setLogs] = useState([]);
@@ -40,86 +39,48 @@ export default function RequestLogger() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Request Logs</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-muted flex items-center gap-2 cursor-pointer">
-            <span>Auto Refresh (3s)</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={autoRefresh}
-              aria-label="Auto Refresh (3s)"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${autoRefresh ? "bg-primary" : "bg-bg-subtle border border-border"
-                }`}
-            >
-              <span
-                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${autoRefresh ? "translate-x-5" : "translate-x-1"
-                  }`}
-              />
-            </button>
-          </span>
+    <div className="panel">
+      <div className="panel-head">
+        <span className="t">Request Logs</span>
+        <div className="acts">
+          <span className="dim" style={{ fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase" }}>Auto Refresh (3s)</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoRefresh}
+            aria-label="Auto Refresh (3s)"
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`sw${autoRefresh ? " on" : ""}`}
+          />
         </div>
       </div>
 
-      <Card className="overflow-hidden bg-black/5 dark:bg-black/20">
-        <div className="p-0 overflow-x-auto max-h-[600px] overflow-y-auto font-mono text-xs">
-          {loading && logs.length === 0 ? (
-            <div className="p-8 text-center text-text-muted">Loading logs...</div>
-          ) : logs.length === 0 ? (
-            <div className="p-8 text-center text-text-muted">No logs recorded yet.</div>
-          ) : (
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead className="sticky top-0 bg-bg-subtle border-b border-border z-10">
-                <tr>
-                  <th className="px-3 py-2 border-r border-border">DateTime</th>
-                  <th className="px-3 py-2 border-r border-border">Model</th>
-                  <th className="px-3 py-2 border-r border-border">Provider</th>
-                  <th className="px-3 py-2 border-r border-border">Account</th>
-                  <th className="px-3 py-2 border-r border-border">In</th>
-                  <th className="px-3 py-2 border-r border-border">Out</th>
-                  <th className="px-3 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {logs.map((log, i) => {
-                  const parts = log.split(" | ");
-                  if (parts.length < 7) return null;
+      <div className="term">
+        {loading && logs.length === 0 ? (
+          <div className="ln lg">Loading logs...</div>
+        ) : logs.length === 0 ? (
+          <div className="ln lg">No logs recorded yet.</div>
+        ) : (
+          logs.map((log, i) => {
+            const parts = log.split(" | ");
+            if (parts.length < 7) return null;
 
-                  const status = parts[6];
-                  const isPending = status.includes("PENDING");
-                  const isFailed = status.includes("FAILED");
-                  const isSuccess = status.includes("OK");
+            const status = parts[6];
+            const isPending = status.includes("PENDING");
+            const isFailed = status.includes("FAILED");
 
-                  return (
-                    <tr key={`${parts[0]}-${parts[1]}-${parts[3]}`} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
-                      <td className="px-3 py-1.5 border-r border-border text-text-muted">{parts[0]}</td>
-                      <td className="px-3 py-1.5 border-r border-border font-medium">{parts[1]}</td>
-                      <td className="px-3 py-1.5 border-r border-border">
-                        <span className="px-1.5 py-0.5 rounded bg-bg-subtle border border-border text-[10px] uppercase font-bold">
-                          {parts[2]}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 border-r border-border truncate max-w-[150px]" title={parts[3]}>{parts[3]}</td>
-                      <td className="px-3 py-1.5 border-r border-border text-right text-primary">{parts[4]}</td>
-                      <td className="px-3 py-1.5 border-r border-border text-right text-success">{parts[5]}</td>
-                      <td className={`px-3 py-1.5 font-bold ${isSuccess ? 'text-success' :
-                          isFailed ? 'text-error' :
-                            'text-primary animate-pulse'
-                        }`}>
-                        {status}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </Card>
-      <div className="text-[10px] text-text-muted italic">
+            return (
+              <div
+                key={`${parts[0]}-${parts[1]}-${parts[3]}-${i}`}
+                className={`ln ${isFailed ? "er" : isPending ? "wa" : ""}`}
+              >
+                {log}
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div className="faint" style={{ padding: "8px 16px", fontSize: 10 }}>
         Logs are loaded from the request history database.
       </div>
     </div>

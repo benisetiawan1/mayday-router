@@ -552,11 +552,12 @@ export default function ProfileClient({ initialSettings }) {
         <Card>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="size-10 sm:size-12 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-xl sm:text-2xl">computer</span>
-              </div>
+              <span className="text-[11px] font-bold tracking-[0.16em] text-primary font-sans">01</span>
               <div>
-                <h2 className="text-lg sm:text-xl font-semibold">Local Mode</h2>
+                <h2 className="text-xs font-bold tracking-[0.16em] uppercase text-text-muted flex items-center gap-2 font-display">
+                  <span className="material-symbols-outlined text-[16px] text-primary">computer</span>
+                  Local Mode
+                </h2>
                 <p className="text-sm text-text-muted">Running on your machine</p>
               </div>
             </div>
@@ -627,10 +628,11 @@ export default function ProfileClient({ initialSettings }) {
         {/* Language */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
-            <div className="size-10 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[20px]">language</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Language</h3>
+            <span className="text-[11px] font-bold tracking-[0.16em] text-primary font-sans">02</span>
+            <h2 className="text-xs font-bold tracking-[0.16em] uppercase text-text-muted flex items-center gap-2 font-display">
+              <span className="material-symbols-outlined text-[16px] text-primary">language</span>
+              Language
+            </h2>
           </div>
           <button type="button"
             onClick={() => setLangOpen(true)}
@@ -645,15 +647,16 @@ export default function ProfileClient({ initialSettings }) {
         {/* Security */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
-              <span className="material-symbols-outlined text-[20px]">shield</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Security</h3>
+            <span className="text-[11px] font-bold tracking-[0.16em] text-primary font-sans">03</span>
+            <h2 className="text-xs font-bold tracking-[0.16em] uppercase text-text-muted flex items-center gap-2 font-display">
+              <span className="material-symbols-outlined text-[16px] text-primary">shield</span>
+              Security
+            </h2>
           </div>
           <div className="flex flex-col gap-4">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Require login</p>
+                <p className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Require login</p>
                 <p className="text-xs sm:text-sm text-text-muted">
                   When ON, dashboard requires password. When OFF, access without login.
                 </p>
@@ -667,8 +670,8 @@ export default function ProfileClient({ initialSettings }) {
             {settings.requireLogin === true && (
               <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 pt-4 border-t border-border/50">
                 {settings.hasPassword && (
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="profile-current-password" className="text-xs sm:text-sm font-medium">Current Password</label>
+                  <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                    <label htmlFor="profile-current-password" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Current Password</label>
                     <Input id="profile-current-password"
                       type="password"
                       placeholder="Enter current password"
@@ -686,8 +689,8 @@ export default function ProfileClient({ initialSettings }) {
                   </div>
                 )} */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="profile-new-password" className="text-xs sm:text-sm font-medium">New Password</label>
+                  <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                    <label htmlFor="profile-new-password" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">New Password</label>
                     <Input id="profile-new-password"
                       type="password"
                       placeholder="Enter new password"
@@ -696,8 +699,8 @@ export default function ProfileClient({ initialSettings }) {
                       required
                     />
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="profile-confirm-password" className="text-xs sm:text-sm font-medium">Confirm New Password</label>
+                  <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                    <label htmlFor="profile-confirm-password" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Confirm New Password</label>
                     <Input id="profile-confirm-password"
                       type="password"
                       placeholder="Confirm new password"
@@ -731,11 +734,12 @@ export default function ProfileClient({ initialSettings }) {
             onClick={() => setOidcExpanded((v) => !v)}
             className="w-full flex items-center gap-3 text-left"
           >
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">lock_open</span>
-            </div>
+            <span className="text-[11px] font-bold tracking-[0.16em] text-primary font-sans">04</span>
             <div className="flex-1 min-w-0">
-              <h3 className="text-base sm:text-lg font-semibold">OIDC Dashboard Login</h3>
+              <h2 className="text-xs font-bold tracking-[0.16em] uppercase text-text-muted flex items-center gap-2 font-display">
+                <span className="material-symbols-outlined text-[16px] text-primary">lock_open</span>
+                OIDC Dashboard Login
+              </h2>
               <p className="text-xs text-text-muted">
                 {settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik/Keycloak/Google"}
               </p>
@@ -750,8 +754,8 @@ export default function ProfileClient({ initialSettings }) {
               Use Authentik or any OIDC provider to sign in to the dashboard. You can enable password-only, OIDC-only, or both for the dashboard; model API access still uses API keys.
             </p>
 
-            <div className="flex flex-col gap-2">
-              <span className="font-medium text-sm sm:text-base">Auth Mode</span>
+            <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+              <span className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Auth Mode</span>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {[
                   {
@@ -793,8 +797,8 @@ export default function ProfileClient({ initialSettings }) {
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="profile-oidc-issuer" className="font-medium text-sm sm:text-base">Issuer URL</label>
+              <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                <label htmlFor="profile-oidc-issuer" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Issuer URL</label>
                 <Input id="profile-oidc-issuer"
                   placeholder="https://auth.example.com/application/o/Mayday/"
                   value={oidcForm.oidcIssuerUrl}
@@ -803,8 +807,8 @@ export default function ProfileClient({ initialSettings }) {
                 />
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="profile-oidc-client-id" className="font-medium text-sm sm:text-base">Client ID</label>
+              <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                <label htmlFor="profile-oidc-client-id" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Client ID</label>
                 <Input id="profile-oidc-client-id"
                   placeholder="Mayday-dashboard"
                   value={oidcForm.oidcClientId}
@@ -813,8 +817,8 @@ export default function ProfileClient({ initialSettings }) {
                 />
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="profile-oidc-client-secret" className="font-medium text-sm sm:text-base">Client Secret</label>
+              <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                <label htmlFor="profile-oidc-client-secret" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Client Secret</label>
                 <Input id="profile-oidc-client-secret"
                   type="password"
                   placeholder="Leave blank to keep existing secret"
@@ -825,8 +829,8 @@ export default function ProfileClient({ initialSettings }) {
                 <p className="text-xs sm:text-sm text-text-muted">This value is write-only after saving.</p>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="profile-oidc-scopes" className="font-medium text-sm sm:text-base">Scopes</label>
+              <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                <label htmlFor="profile-oidc-scopes" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Scopes</label>
                 <Input id="profile-oidc-scopes"
                   placeholder="openid profile email"
                   value={oidcForm.oidcScopes}
@@ -835,8 +839,8 @@ export default function ProfileClient({ initialSettings }) {
                 />
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="profile-oidc-login-label" className="font-medium text-sm sm:text-base">Login Button Label</label>
+              <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                <label htmlFor="profile-oidc-login-label" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Login Button Label</label>
                 <Input id="profile-oidc-login-label"
                   placeholder="Sign in with OIDC"
                   value={oidcForm.oidcLoginLabel}
@@ -890,15 +894,16 @@ export default function ProfileClient({ initialSettings }) {
         {/* Routing Preferences */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">route</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Routing Strategy</h3>
+            <span className="text-[11px] font-bold tracking-[0.16em] text-primary font-sans">05</span>
+            <h2 className="text-xs font-bold tracking-[0.16em] uppercase text-text-muted flex items-center gap-2 font-display">
+              <span className="material-symbols-outlined text-[16px] text-primary">route</span>
+              Routing Strategy
+            </h2>
           </div>
           <div className="flex flex-col gap-4">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Round Robin</p>
+                <p className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Round Robin</p>
                 <p className="text-xs sm:text-sm text-text-muted">
                   Cycle through accounts to distribute load
                 </p>
@@ -914,7 +919,7 @@ export default function ProfileClient({ initialSettings }) {
             {settings.fallbackStrategy === "round-robin" && (
               <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm sm:text-base">Sticky Limit</p>
+                  <p className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Sticky Limit</p>
                   <p className="text-xs sm:text-sm text-text-muted">
                     Calls per account before switching
                   </p>
@@ -934,7 +939,7 @@ export default function ProfileClient({ initialSettings }) {
             {/* Combo Round Robin */}
             <div className="flex items-start sm:items-center justify-between gap-4 pt-4 border-t border-border/50">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Combo Round Robin</p>
+                <p className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Combo Round Robin</p>
                 <p className="text-xs sm:text-sm text-text-muted">
                   Cycle through providers in combos instead of always starting with first
                 </p>
@@ -950,7 +955,7 @@ export default function ProfileClient({ initialSettings }) {
             {settings.comboStrategy === "round-robin" && (
               <div className="flex items-center justify-between pt-2 border-t border-border/50">
                 <div>
-                  <p className="font-medium">Combo Sticky Limit</p>
+                  <p className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Combo Sticky Limit</p>
                   <p className="text-sm text-text-muted">
                     Calls per combo model before switching
                   </p>
@@ -981,16 +986,17 @@ export default function ProfileClient({ initialSettings }) {
         {/* Network */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">wifi</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Network</h3>
+            <span className="text-[11px] font-bold tracking-[0.16em] text-primary font-sans">06</span>
+            <h2 className="text-xs font-bold tracking-[0.16em] uppercase text-text-muted flex items-center gap-2 font-display">
+              <span className="material-symbols-outlined text-[16px] text-primary">wifi</span>
+              Network
+            </h2>
           </div>
 
           <div className="flex flex-col gap-4">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Outbound Proxy</p>
+                <p className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Outbound Proxy</p>
                 <p className="text-xs sm:text-sm text-text-muted">Enable proxy for OAuth + provider outbound requests.</p>
               </div>
               <Toggle
@@ -1002,8 +1008,8 @@ export default function ProfileClient({ initialSettings }) {
 
             {settings.outboundProxyEnabled === true && (
               <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 pt-2 border-t border-border/50">
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="profile-proxy-url" className="font-medium text-sm sm:text-base">Proxy URL</label>
+                <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                  <label htmlFor="profile-proxy-url" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Proxy URL</label>
                   <Input
                     id="profile-proxy-url"
                     placeholder="http://127.0.0.1:7897"
@@ -1014,8 +1020,8 @@ export default function ProfileClient({ initialSettings }) {
                   <p className="text-xs sm:text-sm text-text-muted">Leave empty to inherit existing env proxy (if any).</p>
                 </div>
 
-                <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
-                  <label htmlFor="profile-no-proxy" className="font-medium text-sm sm:text-base">No Proxy</label>
+                <div className="flex flex-col gap-2 border-b border-border-subtle last:border-b-0 pb-2">
+                  <label htmlFor="profile-no-proxy" className="text-[11px] tracking-[0.08em] uppercase text-text-muted">No Proxy</label>
                   <Input
                     id="profile-no-proxy"
                     placeholder="localhost,127.0.0.1"
@@ -1055,14 +1061,15 @@ export default function ProfileClient({ initialSettings }) {
         {/* Observability Settings */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">monitoring</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Observability</h3>
+            <span className="text-[11px] font-bold tracking-[0.16em] text-primary font-sans">07</span>
+            <h2 className="text-xs font-bold tracking-[0.16em] uppercase text-text-muted flex items-center gap-2 font-display">
+              <span className="material-symbols-outlined text-[16px] text-primary">monitoring</span>
+              Observability
+            </h2>
           </div>
           <div className="flex items-start sm:items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm sm:text-base">Enable Observability</p>
+              <p className="text-[11px] tracking-[0.08em] uppercase text-text-muted">Enable Observability</p>
               <p className="text-xs sm:text-sm text-text-muted">
                 Record request details for inspection in the logs view
               </p>

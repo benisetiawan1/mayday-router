@@ -62,8 +62,8 @@ export default function Modal({
       <div
         className={cn(
           "relative w-full bg-surface",
-          "border border-border-subtle",
-          "rounded-[14px] shadow-[var(--shadow-elev)]",
+          "border border-border",
+          "rounded-[4px] shadow-[var(--shadow-elev)]",
           "fade-in",
           sizeClass,
           className
@@ -91,7 +91,7 @@ export default function Modal({
                 </div>
               )}
               {title && (
-                <h2 className="text-lg font-semibold text-text-main">{title}</h2>
+                <h2 className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-text-muted">{title}</h2>
               )}
             </div>
             {/* X button — mobile only */}

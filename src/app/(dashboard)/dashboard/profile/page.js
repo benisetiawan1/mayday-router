@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Toggle, Input } from "@/shared/components";
+import { Button, Toggle, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
-import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
@@ -578,228 +577,167 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-0">
-      <div className="flex flex-col gap-6">
-        {/* Local Mode Info */}
-        <Card>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="size-10 sm:size-12 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-xl sm:text-2xl">computer</span>
-              </div>
-              <div>
-                <h2 className="text-lg sm:text-xl font-semibold">Local Mode</h2>
-                <p className="text-sm text-text-muted">Running on your machine</p>
-              </div>
-            </div>
-            <div className="inline-flex p-1 rounded-lg bg-black/5 dark:bg-white/5 w-full sm:w-auto">
-              {["light", "dark", "system"].map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setTheme(option)}
-                  className={cn(
-                    "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-all flex-1 sm:flex-initial",
-                    theme === option
-                      ? "bg-white dark:bg-white/10 text-text-main shadow-sm"
-                      : "text-text-muted hover:text-text-main"
-                  )}
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    {option === "light" ? "light_mode" : option === "dark" ? "dark_mode" : "contrast"}
-                  </span>
-                  <span className="capitalize text-xs sm:text-sm">{option}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex flex-col gap-3 pt-4 border-t border-border">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
-              <div>
-                <p className="font-medium text-sm sm:text-base">Database Location</p>
-                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.mayday/db/data.sqlite</p>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                variant="secondary"
-                icon="download"
-                onClick={() => setDbAuth({ open: true, mode: "export", password: "" })}
-                loading={dbLoading}
-                className="w-full sm:w-auto"
-              >
+    <div className="flex flex-col">
+      <div className="flex flex-col">
+        {/* 01 · Local Mode */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="t"><b>01</b> · Local Mode</span>
+            <span className="dim">Running on your machine</span>
+            <div className="acts">
+              <Button variant="outline" icon="download" onClick={() => setDbAuth({ open: true, mode: "export", password: "" })} loading={dbLoading}>
                 Download Backup
               </Button>
-              <Button
-                variant="outline"
-                icon="upload"
-                onClick={() => importFileRef.current?.click()}
-                disabled={dbLoading}
-                className="w-full sm:w-auto"
-              >
+              <Button variant="outline" icon="upload" onClick={() => importFileRef.current?.click()} disabled={dbLoading}>
                 Import Backup
               </Button>
-              <input
-                ref={importFileRef}
-                type="file"
-                accept="application/json,.json"
-                className="hidden"
-                onChange={handleImportDatabase}
-              />
             </div>
-            {dbStatus.message && (
-              <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
-                {dbStatus.message}
-              </p>
-            )}
           </div>
-        </Card>
-
-        {/* Language */}
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="size-10 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[20px]">language</span>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportDatabase} />
+          <div className="spec">
+            <div className="kv">
+              <div className="k">Database Location</div>
+              <div className="v break-all">~/.mayday/db/data.sqlite</div>
             </div>
-            <h3 className="text-base sm:text-lg font-semibold">Language</h3>
-          </div>
-          <button
-            onClick={() => setLangOpen(true)}
-            className="flex items-center justify-between w-full p-3 rounded-lg bg-bg border border-border hover:border-primary/50 transition-colors"
-            data-i18n-skip="true"
-          >
-            <span className="text-sm text-text-muted">Display language</span>
-            <span className="text-2xl">{LOCALE_FLAGS[locale] || "🌐"}</span>
-          </button>
-        </Card>
-
-        {/* Security */}
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
-              <span className="material-symbols-outlined text-[20px]">shield</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Security</h3>
-          </div>
-          <div className="flex flex-col gap-4">
-            <div className="flex items-start sm:items-center justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Require login</p>
-                <p className="text-xs sm:text-sm text-text-muted">
-                  When ON, dashboard requires password. When OFF, access without login.
-                </p>
+            <div className="kv">
+              <div className="k">Theme</div>
+              <div className="v">
+                <div className="seg">
+                  {["dark", "light", "system"].map((option) => (
+                    <button key={option} type="button" className={theme === option ? "on" : ""} onClick={() => setTheme(option)}>
+                      {option}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <Toggle
-                checked={settings.requireLogin === true}
-                onChange={() => updateRequireLogin(!settings.requireLogin)}
-                disabled={loading}
-              />
             </div>
-            {settings.requireLogin === true && (
-              <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 pt-4 border-t border-border/50">
-                {settings.hasPassword && (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs sm:text-sm font-medium">Current Password</label>
-                    <Input
-                      type="password"
-                      placeholder="Enter current password"
-                      value={passwords.current}
-                      onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                      required
-                    />
-                  </div>
-                )}
-                {/* {!settings.hasPassword && (
-                  <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                    <p className="text-sm text-blue-600 dark:text-blue-400">
-                      Setting password for the first time. Leave current password empty or use default: <code className="bg-blue-500/20 px-1 rounded">123456</code>
-                    </p>
-                  </div>
-                )} */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs sm:text-sm font-medium">New Password</label>
-                    <Input
-                      type="password"
-                      placeholder="Enter new password"
-                      value={passwords.new}
-                      onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs sm:text-sm font-medium">Confirm New Password</label>
-                    <Input
-                      type="password"
-                      placeholder="Confirm new password"
-                      value={passwords.confirm}
-                      onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {passStatus.message && (
-                  <p className={`text-xs sm:text-sm ${passStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
-                    {passStatus.message}
-                  </p>
-                )}
-
-                <div className="pt-2">
-                  <Button type="submit" variant="primary" loading={passLoading} className="w-full sm:w-auto">
-                    {settings.hasPassword ? "Update Password" : "Set Password"}
-                  </Button>
-                </div>
-              </form>
-            )}
           </div>
-        </Card>
+          {dbStatus.message && (
+            <p className={`px-4 py-2 text-xs ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+              {dbStatus.message}
+            </p>
+          )}
+        </div>
 
-        {/* OIDC */}
-        <Card>
-          <button
-            type="button"
-            onClick={() => setOidcExpanded((v) => !v)}
-            className="w-full flex items-center gap-3 text-left"
-          >
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">lock_open</span>
+        {/* 02 · Language & security */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="t"><b>02</b> · Language & security</span>
+          </div>
+          <div className="spec">
+            <div className="kv">
+              <div className="k">Language</div>
+              <div className="v">
+                <button
+                  type="button"
+                  onClick={() => setLangOpen(true)}
+                  className="flex items-center justify-between w-full p-3 rounded-[3px] bg-bg border border-border hover:border-primary/50 transition-colors"
+                  data-i18n-skip="true"
+                >
+                  <span className="text-sm text-text-muted">Display language</span>
+                  <span className="text-2xl">{LOCALE_FLAGS[locale] || "🌐"}</span>
+                </button>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-base sm:text-lg font-semibold">OIDC Dashboard Login</h3>
-              <p className="text-xs text-text-muted">
-                {settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik/Keycloak/Google"}
-              </p>
+            <div className="kv">
+              <div className="k">Require login</div>
+              <div className="v">
+                <Toggle
+                  checked={settings.requireLogin === true}
+                  onChange={() => updateRequireLogin(!settings.requireLogin)}
+                  disabled={loading}
+                />
+                <div className="sid mt-1">
+                  When ON, dashboard requires password. When OFF, access without login.
+                </div>
+              </div>
             </div>
-            <span className="material-symbols-outlined text-text-muted shrink-0">
-              {oidcExpanded ? "expand_less" : "expand_more"}
+          </div>
+          {settings.requireLogin === true && (
+            <form onSubmit={handlePasswordChange} className="border-t border-border-subtle">
+              {settings.hasPassword && (
+                <div className="frm">
+                  <span className="fl">Current Password</span>
+                  <Input
+                    type="password"
+                    placeholder="Enter current password"
+                    value={passwords.current}
+                    onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                    required
+                  />
+                  <span className="dim" />
+                </div>
+              )}
+              <div className="frm">
+                <span className="fl">New Password</span>
+                <Input
+                  type="password"
+                  placeholder="Enter new password"
+                  value={passwords.new}
+                  onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                  required
+                />
+                <span className="dim" />
+              </div>
+              <div className="frm">
+                <span className="fl">Confirm New Password</span>
+                <Input
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={passwords.confirm}
+                  onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                  required
+                />
+                <span className="dim" />
+              </div>
+              {passStatus.message && (
+                <p className={`px-4 py-2 text-xs ${passStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+                  {passStatus.message}
+                </p>
+              )}
+              <div className="frm">
+                <span className="fl" />
+                <Button type="submit" variant="primary" loading={passLoading} className="w-full sm:w-auto">
+                  {settings.hasPassword ? "Update Password" : "Set Password"}
+                </Button>
+                <span className="dim" />
+              </div>
+            </form>
+          )}
+        </div>
+
+        {/* 03 · OIDC Dashboard Login */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="t"><b>03</b> · OIDC Dashboard Login</span>
+            <span className="dim">
+              {settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik/Keycloak/Google"}
             </span>
-          </button>
+            <div className="acts">
+              <button
+                type="button"
+                onClick={() => setOidcExpanded((v) => !v)}
+                className="btn ghost"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {oidcExpanded ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+            </div>
+          </div>
           {oidcExpanded && (
-          <div className="flex flex-col gap-4 mt-4">
-            <p className="text-xs sm:text-sm text-text-muted">
+          <div className="flex flex-col gap-1">
+            <p className="px-4 py-3 text-xs text-text-muted border-b border-border-subtle">
               Use Authentik or any OIDC provider to sign in to the dashboard. You can enable password-only, OIDC-only, or both for the dashboard; model API access still uses API keys.
             </p>
 
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm sm:text-base">Auth Mode</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="frm">
+              <span className="fl">Auth Mode</span>
+              <div className="flex flex-wrap gap-1.5">
                 {[
-                  {
-                    value: "password",
-                    title: "Password only",
-                    desc: "Keep the legacy password login.",
-                  },
-                  {
-                    value: "oidc",
-                    title: "OIDC only",
-                    desc: "Require OIDC for dashboard access.",
-                  },
-                  {
-                    value: "both",
-                    title: "Both",
-                    desc: "Allow either password or OIDC.",
-                  },
+                  { value: "password", title: "Password only", desc: "Keep the legacy password login." },
+                  { value: "oidc", title: "OIDC only", desc: "Require OIDC for dashboard access." },
+                  { value: "both", title: "Both", desc: "Allow either password or OIDC." },
                 ].map((option) => {
                   const active = oidcForm.authMode === option.value;
                   return (
@@ -807,258 +745,226 @@ export default function ProfilePage() {
                       key={option.value}
                       type="button"
                       onClick={() => updateOidcForm("authMode", option.value)}
-                      className={cn(
-                        "text-left rounded-lg border p-3 transition-colors",
+                      className={`text-left rounded-[3px] border p-2.5 transition-colors ${
                         active
                           ? "border-primary bg-primary/5"
                           : "border-border bg-bg hover:bg-black/5 dark:hover:bg-white/5"
-                      )}
+                      }`}
                       disabled={loading || oidcLoading}
                     >
-                      <p className="font-medium text-sm sm:text-base">{option.title}</p>
-                      <p className="text-xs sm:text-sm text-text-muted mt-1">{option.desc}</p>
+                      <p className="font-medium text-xs">{option.title}</p>
+                      <p className="text-[11px] text-text-muted mt-0.5">{option.desc}</p>
                     </button>
                   );
                 })}
               </div>
+              <span className="dim" />
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="font-medium text-sm sm:text-base">Issuer URL</label>
-                <Input
-                  placeholder="https://auth.example.com/application/o/mayday/"
-                  value={oidcForm.oidcIssuerUrl}
-                  onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="font-medium text-sm sm:text-base">Client ID</label>
-                <Input
-                  placeholder="mayday-dashboard"
-                  value={oidcForm.oidcClientId}
-                  onChange={(e) => updateOidcForm("oidcClientId", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="font-medium text-sm sm:text-base">Client Secret</label>
-                <Input
-                  type="password"
-                  placeholder="Leave blank to keep existing secret"
-                  value={oidcClientSecret}
-                  onChange={(e) => setOidcClientSecret(e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
-                <p className="text-xs sm:text-sm text-text-muted">This value is write-only after saving.</p>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="font-medium text-sm sm:text-base">Scopes</label>
-                <Input
-                  placeholder="openid profile email"
-                  value={oidcForm.oidcScopes}
-                  onChange={(e) => updateOidcForm("oidcScopes", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="font-medium text-sm sm:text-base">Login Button Label</label>
-                <Input
-                  placeholder="Sign in with OIDC"
-                  value={oidcForm.oidcLoginLabel}
-                  onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
-              </div>
+            <div className="frm">
+              <span className="fl">Issuer URL</span>
+              <Input
+                placeholder="https://auth.example.com/application/o/mayday/"
+                value={oidcForm.oidcIssuerUrl}
+                onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)}
+                disabled={loading || oidcLoading}
+              />
+              <span className="dim" />
             </div>
 
-            <div className="rounded-lg border border-border bg-bg p-3 text-xs sm:text-sm text-text-muted">
-              <p className="font-medium text-text-main mb-1">Redirect URI</p>
-              <code className="block break-all font-mono">{oidcRedirectUri}</code>
+            <div className="frm">
+              <span className="fl">Client ID</span>
+              <Input
+                placeholder="mayday-dashboard"
+                value={oidcForm.oidcClientId}
+                onChange={(e) => updateOidcForm("oidcClientId", e.target.value)}
+                disabled={loading || oidcLoading}
+              />
+              <span className="dim" />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border/50">
-              <Button type="button" variant="primary" loading={oidcLoading} onClick={() => saveOidcSettings()} className="w-full sm:w-auto">
-                Save auth mode
-              </Button>
-              <Button type="button" variant="outline" loading={oidcTestLoading} onClick={testOidcConnection} className="w-full sm:w-auto">
-                Test connection
-              </Button>
+            <div className="frm">
+              <span className="fl">Client Secret</span>
+              <Input
+                type="password"
+                placeholder="Leave blank to keep existing secret"
+                value={oidcClientSecret}
+                onChange={(e) => setOidcClientSecret(e.target.value)}
+                disabled={loading || oidcLoading}
+              />
+              <span className="dim">This value is write-only after saving.</span>
+            </div>
+
+            <div className="frm">
+              <span className="fl">Scopes</span>
+              <Input
+                placeholder="openid profile email"
+                value={oidcForm.oidcScopes}
+                onChange={(e) => updateOidcForm("oidcScopes", e.target.value)}
+                disabled={loading || oidcLoading}
+              />
+              <span className="dim" />
+            </div>
+
+            <div className="frm">
+              <span className="fl">Login Button Label</span>
+              <Input
+                placeholder="Sign in with OIDC"
+                value={oidcForm.oidcLoginLabel}
+                onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)}
+                disabled={loading || oidcLoading}
+              />
+              <span className="dim" />
+            </div>
+
+            <div className="frm">
+              <span className="fl">Redirect URI</span>
+              <code className="block break-all text-xs">{oidcRedirectUri}</code>
+              <span className="dim" />
+            </div>
+
+            <div className="frm">
+              <span className="fl" />
+              <div className="flex flex-col sm:flex-row gap-1.5">
+                <Button type="button" variant="primary" loading={oidcLoading} onClick={() => saveOidcSettings()} className="w-full sm:w-auto">
+                  Save auth mode
+                </Button>
+                <Button type="button" variant="outline" loading={oidcTestLoading} onClick={testOidcConnection} className="w-full sm:w-auto">
+                  Test connection
+                </Button>
+              </div>
+              <span className="dim" />
             </div>
 
             {oidcTestStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcTestStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+              <p className={`px-4 py-2 text-xs ${oidcTestStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
                 {oidcTestStatus.message}
               </p>
             )}
 
             {oidcStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+              <p className={`px-4 py-2 text-xs ${oidcStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
                 {oidcStatus.message}
               </p>
             )}
 
             {settings.authMode === "oidc" && (
-              <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+              <p className="px-4 py-2 text-xs text-amber-600 dark:text-amber-400">
                 OIDC login is currently active. Password login is disabled until you switch back.
               </p>
             )}
 
             {settings.authMode === "both" && (
-              <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+              <p className="px-4 py-2 text-xs text-amber-600 dark:text-amber-400">
                 Password and OIDC login are both active.
               </p>
             )}
           </div>
           )}
-        </Card>
+        </div>
 
-        {/* Routing Preferences */}
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">route</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Routing Strategy</h3>
+        {/* 04 · Routing & network */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="t"><b>04</b> · Routing & network</span>
           </div>
-          <div className="flex flex-col gap-4">
-            <div className="flex items-start sm:items-center justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Round Robin</p>
-                <p className="text-xs sm:text-sm text-text-muted">
-                  Cycle through accounts to distribute load
-                </p>
-              </div>
-              <Toggle
-                checked={settings.fallbackStrategy === "round-robin"}
-                onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")}
+          <div className="frm">
+            <span className="fl">Round Robin</span>
+            <Toggle
+              checked={settings.fallbackStrategy === "round-robin"}
+              onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")}
+              disabled={loading}
+            />
+            <span className="dim">Cycle through accounts to distribute load</span>
+          </div>
+          {settings.fallbackStrategy === "round-robin" && (
+            <div className="frm">
+              <span className="fl">Sticky Limit</span>
+              <Input
+                type="number"
+                min="1"
+                max="10"
+                value={settings.stickyRoundRobinLimit || 3}
+                onChange={(e) => updateStickyLimit(e.target.value)}
                 disabled={loading}
+                className="w-24 text-center"
               />
+              <span className="dim">Calls per account before switching</span>
             </div>
-
-            {/* Sticky Round Robin Limit */}
-            {settings.fallbackStrategy === "round-robin" && (
-              <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm sm:text-base">Sticky Limit</p>
-                  <p className="text-xs sm:text-sm text-text-muted">
-                    Calls per account before switching
-                  </p>
-                </div>
-                <Input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={settings.stickyRoundRobinLimit || 3}
-                  onChange={(e) => updateStickyLimit(e.target.value)}
-                  disabled={loading}
-                  className="w-16 sm:w-20 text-center shrink-0"
-                />
-              </div>
-            )}
-
-            {/* Combo Round Robin */}
-            <div className="flex items-start sm:items-center justify-between gap-4 pt-4 border-t border-border/50">
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Combo Round Robin</p>
-                <p className="text-xs sm:text-sm text-text-muted">
-                  Cycle through providers in combos instead of always starting with first
-                </p>
-              </div>
-              <Toggle
-                checked={settings.comboStrategy === "round-robin"}
-                onChange={() => updateComboStrategy(settings.comboStrategy === "round-robin" ? "fallback" : "round-robin")}
+          )}
+          <div className="frm">
+            <span className="fl">Combo Round Robin</span>
+            <Toggle
+              checked={settings.comboStrategy === "round-robin"}
+              onChange={() => updateComboStrategy(settings.comboStrategy === "round-robin" ? "fallback" : "round-robin")}
+              disabled={loading}
+            />
+            <span className="dim">Cycle through providers in combos instead of always starting with first</span>
+          </div>
+          {settings.comboStrategy === "round-robin" && (
+            <div className="frm">
+              <span className="fl">Combo Sticky Limit</span>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={settings.comboStickyRoundRobinLimit || 1}
+                onChange={(e) => updateComboStickyLimit(e.target.value)}
                 disabled={loading}
+                className="w-24 text-center"
               />
+              <span className="dim">Calls per combo model before switching</span>
             </div>
+          )}
+          <div className="px-4 py-2 text-xs text-text-muted italic border-t border-border-subtle">
+            {settings.fallbackStrategy === "round-robin"
+              ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
+              : "Currently using accounts in priority order (Fill First)."}
+            {settings.comboStrategy === "round-robin"
+              ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
+              : " Combos always start with their first model."}
+          </div>
 
-            {/* Combo Sticky Round Robin Limit */}
-            {settings.comboStrategy === "round-robin" && (
-              <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                <div>
-                  <p className="font-medium">Combo Sticky Limit</p>
-                  <p className="text-sm text-text-muted">
-                    Calls per combo model before switching
-                  </p>
-                </div>
+        <div className="frm">
+            <span className="fl">Outbound Proxy</span>
+            <Toggle
+              checked={settings.outboundProxyEnabled === true}
+              onChange={() => updateOutboundProxyEnabled(!(settings.outboundProxyEnabled === true))}
+              disabled={loading || proxyLoading}
+            />
+            <span className="dim">Enable proxy for OAuth + provider outbound requests.</span>
+          </div>
+
+          {settings.outboundProxyEnabled === true && (
+            <form onSubmit={updateOutboundProxy} className="border-t border-border-subtle">
+              <div className="frm">
+                <span className="fl">Proxy URL</span>
                 <Input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={settings.comboStickyRoundRobinLimit || 1}
-                  onChange={(e) => updateComboStickyLimit(e.target.value)}
-                  disabled={loading}
-                  className="w-20 text-center"
+                  placeholder="http://127.0.0.1:7897"
+                  value={proxyForm.outboundProxyUrl}
+                  onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))}
+                  disabled={loading || proxyLoading}
                 />
+                <span className="dim">Leave empty to inherit existing env proxy (if any).</span>
               </div>
-            )}
 
-            <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
-              {settings.fallbackStrategy === "round-robin"
-                ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
-                : "Currently using accounts in priority order (Fill First)."}
-              {settings.comboStrategy === "round-robin"
-                ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
-                : " Combos always start with their first model."}
-            </p>
-          </div>
-        </Card>
-
-        {/* Network */}
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">wifi</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Network</h3>
-          </div>
-
-          <div className="flex flex-col gap-4">
-            <div className="flex items-start sm:items-center justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Outbound Proxy</p>
-                <p className="text-xs sm:text-sm text-text-muted">Enable proxy for OAuth + provider outbound requests.</p>
+              <div className="frm">
+                <span className="fl">No Proxy</span>
+                <Input
+                  placeholder="localhost,127.0.0.1"
+                  value={proxyForm.outboundNoProxy}
+                  onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))}
+                  disabled={loading || proxyLoading}
+                />
+                <span className="dim">Comma-separated hostnames/domains to bypass the proxy.</span>
               </div>
-              <Toggle
-                checked={settings.outboundProxyEnabled === true}
-                onChange={() => updateOutboundProxyEnabled(!(settings.outboundProxyEnabled === true))}
-                disabled={loading || proxyLoading}
-              />
-            </div>
 
-            {settings.outboundProxyEnabled === true && (
-              <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 pt-2 border-t border-border/50">
-                <div className="flex flex-col gap-2">
-                  <label className="font-medium text-sm sm:text-base">Proxy URL</label>
-                  <Input
-                    placeholder="http://127.0.0.1:7897"
-                    value={proxyForm.outboundProxyUrl}
-                    onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))}
-                    disabled={loading || proxyLoading}
-                  />
-                  <p className="text-xs sm:text-sm text-text-muted">Leave empty to inherit existing env proxy (if any).</p>
-                </div>
-
-                <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
-                  <label className="font-medium text-sm sm:text-base">No Proxy</label>
-                  <Input
-                    placeholder="localhost,127.0.0.1"
-                    value={proxyForm.outboundNoProxy}
-                    onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))}
-                    disabled={loading || proxyLoading}
-                  />
-                  <p className="text-xs sm:text-sm text-text-muted">Comma-separated hostnames/domains to bypass the proxy.</p>
-                </div>
-
-                <div className="pt-2 border-t border-border/50 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="frm">
+                <span className="fl" />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                     loading={proxyTestLoading}
                     disabled={loading || proxyLoading}
                     onClick={testOutboundProxy}
@@ -1070,59 +976,45 @@ export default function ProfilePage() {
                     Apply
                   </Button>
                 </div>
-              </form>
-            )}
+                <span className="dim" />
+              </div>
+            </form>
+          )}
 
-            {proxyStatus.message && (
-              <p className={`text-xs sm:text-sm ${proxyStatus.type === "error" ? "text-red-500" : "text-green-500"} pt-2 border-t border-border/50`}>
-                {proxyStatus.message}
-              </p>
-            )}
-          </div>
-        </Card>
+          {proxyStatus.message && (
+            <p className={`px-4 py-2 text-xs ${proxyStatus.type === "error" ? "text-red-500" : "text-green-500"} border-t border-border-subtle`}>
+              {proxyStatus.message}
+            </p>
+          )}
 
-        {/* Observability Settings */}
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500 shrink-0">
-              <span className="material-symbols-outlined text-[20px]">monitoring</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">Observability</h3>
-          </div>
-          <div className="flex items-start sm:items-center justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm sm:text-base">Enable Observability</p>
-              <p className="text-xs sm:text-sm text-text-muted">
-                Record request details for inspection in the logs view
-              </p>
-            </div>
+        <div className="frm">
+            <span className="fl">Enable Observability</span>
             <Toggle
               checked={observabilityEnabled}
               onChange={updateObservabilityEnabled}
               disabled={loading}
             />
+            <span className="dim">Record request details for inspection in the logs view</span>
           </div>
-        </Card>
+        </div>
 
-        {/* Account actions */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            variant="outline"
-            fullWidth
-            icon="power_settings_new"
-            onClick={() => setShutdownOpen(true)}
-            className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
-          >
-            Shutdown
-          </Button>
-          <Button
-            variant="outline"
-            fullWidth
-            icon="logout"
-            onClick={handleLogout}
-          >
-            Logout
-          </Button>
+        {/* 05 · Danger zone */}
+        <div className="panel">
+          <div className="panel-head">
+            <span className="t"><b>05</b> · Danger zone</span>
+            <div className="acts">
+              <Button variant="outline" icon="logout" onClick={handleLogout}>
+                Logout
+              </Button>
+              <Button
+                variant="danger"
+                icon="power_settings_new"
+                onClick={() => setShutdownOpen(true)}
+              >
+                Shutdown
+              </Button>
+            </div>
+          </div>
         </div>
 
         {/* App Info */}

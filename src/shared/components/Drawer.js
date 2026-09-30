@@ -56,7 +56,7 @@ export default function Drawer({
       {/* Drawer panel */}
       <div className={cn(
         "absolute right-0 top-0 h-full bg-surface flex flex-col max-w-full",
-        "shadow-[var(--shadow-elev)]",
+        "border-l border-border",
         "slide-in-right",
         "border-l border-border-subtle",
         widths[width] || widths.md,

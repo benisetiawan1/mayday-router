@@ -5,21 +5,14 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import ChangelogModal from "./ChangelogModal";
 import { ConfirmModal } from "./Modal";
 
-function MenuItem({ icon, label, onClick, trailing, danger }) {
+function MenuItem({ label, onClick, trailing, danger }) {
   return (
     <button type="button"
       onClick={onClick}
-      className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors ${
-        danger
-          ? "text-red-500 hover:bg-red-500/10"
-          : "text-text-main hover:bg-black/5 dark:hover:bg-white/5"
-      }`}
+      className={`cr-sys-item ${danger ? "!text-[var(--color-danger)]" : ""}`}
     >
-      <span className={`material-symbols-outlined text-[20px] ${danger ? "" : "text-text-muted"}`}>
-        {icon}
-      </span>
-      <span className="flex-1 text-left">{label}</span>
-      {trailing && <span className="text-base">{trailing}</span>}
+      <span>{label}</span>
+      {trailing && <span className="k">{trailing}</span>}
     </button>
   );
 }
@@ -62,32 +55,29 @@ export default function HeaderMenu({ onLogout }) {
       <div className="relative" ref={menuRef}>
         <button type="button"
           onClick={() => setIsOpen((v) => !v)}
-          className="flex items-center justify-center p-2 rounded-lg text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+          className="tbtn"
           title="Menu"
         >
-          <span className="material-symbols-outlined">grid_view</span>
+          <span className="font-semibold text-[12px]">A</span>
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 top-full mt-2 w-60 bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
+          <div className="cr-sys-menu absolute right-0 top-full mt-1 z-50">
             <MenuItem
-              icon="history"
               label="Change Log"
               onClick={() => { close(); setChangelogOpen(true); }}
             />
             <MenuItem
-              icon={isDark ? "light_mode" : "dark_mode"}
               label="Theme"
+              trailing={isDark ? "dark" : "light"}
               onClick={() => { toggleTheme(); close(); }}
             />
             <MenuItem
-              icon="power_settings_new"
               label="Shutdown"
               danger
               onClick={() => { close(); setShutdownOpen(true); }}
             />
             <MenuItem
-              icon="logout"
               label="Logout"
               danger
               onClick={() => { close(); onLogout(); }}

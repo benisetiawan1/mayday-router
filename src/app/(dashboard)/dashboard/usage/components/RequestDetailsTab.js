@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
 import Drawer from "@/shared/components/Drawer";
 import Pagination from "@/shared/components/Pagination";
@@ -99,93 +98,94 @@ function maskKey(fullKey) {
   return fullKey.length > 8 ? `${fullKey.slice(0, 8)}...` : fullKey;
 }
 
+// Map the fetched `status` field to the mockup `.st` + `.led` presentation.
+function statusMeta(status) {
+  const s = String(status ?? "").toLowerCase();
+  if (/^2\d\d/.test(status ?? "") || s === "success" || s === "ok") {
+    return { cls: "ok", led: "ok", label: "200" };
+  }
+  if (s.includes("403") || s.includes("fallback")) {
+    return { cls: "warn", led: "warn", label: "403→fb" };
+  }
+  if (s && s !== "none" && s !== "null" && s !== "0") {
+    const m = String(status).match(/\d{3}/);
+    return { cls: "down", led: "down", label: m ? m[0] : String(status) };
+  }
+  return { cls: "", led: "", label: "—" };
+}
+
 function RequestFilters({ filterProvider, setFilterProvider, filterStart, setFilterStart, filterEnd, setFilterEnd, providers, cn, handleApplyFilters, handleClearFilters }) {
   return (
-      <Card padding="md">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="flex min-w-0 flex-col gap-2">
-            <label htmlFor="provider-filter" className="text-sm font-medium text-text-main">Provider</label>
-            <select
-              id="provider-filter"
-              value={filterProvider}
-              onChange={(e) => setFilterProvider(e.target.value)}
-              className={cn("h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20 w-full min-w-0 cursor-pointer")}
-              style={{ colorScheme: 'auto' }}
-            >
-              <option value="">All Providers</option>
-              {providers.map((provider) => (
-                <option key={provider.id} value={provider.id}>{provider.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex min-w-0 flex-col gap-2">
-            <label htmlFor="start-date-filter" className="text-sm font-medium text-text-main">Start Date</label>
-            <input id="start-date-filter" type="datetime-local" value={filterStart}
-              onChange={(e) => setFilterStart(e.target.value)}
-              className={cn("h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20")}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-2">
-            <label htmlFor="end-date-filter" className="text-sm font-medium text-text-main">End Date</label>
-            <input id="end-date-filter" type="datetime-local" value={filterEnd}
-              onChange={(e) => setFilterEnd(e.target.value)}
-              className={cn("h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20")}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-2 sm:col-span-2 lg:col-span-1">
-            <span className="hidden text-sm font-medium text-text-main opacity-0 lg:block" aria-hidden="true">Actions</span>
-            <div className="flex gap-2">
-              <Button onClick={handleApplyFilters} className="flex-1">Search</Button>
-              <Button variant="ghost" onClick={handleClearFilters}
-                disabled={!filterProvider && !filterStart && !filterEnd}
-                className="flex-1">Clear</Button>
-            </div>
-          </div>
+    <div className="panel">
+      <div className="p-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]">
+        <div className="flex min-w-0 flex-col gap-2">
+          <label htmlFor="provider-filter" className="text-sm text-text-muted">Provider</label>
+          <select
+            id="provider-filter"
+            value={filterProvider}
+            onChange={(e) => setFilterProvider(e.target.value)}
+            className={cn("inp w-full min-w-0 cursor-pointer")}
+            style={{ colorScheme: 'auto' }}
+          >
+            <option value="">All Providers</option>
+            {providers.map((provider) => (
+              <option key={provider.id} value={provider.id}>{provider.name}</option>
+            ))}
+          </select>
         </div>
-      </Card>
+        <div className="flex min-w-0 flex-col gap-2">
+          <label htmlFor="start-date-filter" className="text-sm text-text-muted">Start Date</label>
+          <input id="start-date-filter" type="datetime-local" value={filterStart}
+            onChange={(e) => setFilterStart(e.target.value)}
+            className={cn("inp w-full min-w-0")}
+          />
+        </div>
+        <div className="flex min-w-0 flex-col gap-2">
+          <label htmlFor="end-date-filter" className="text-sm text-text-muted">End Date</label>
+          <input id="end-date-filter" type="datetime-local" value={filterEnd}
+            onChange={(e) => setFilterEnd(e.target.value)}
+            className={cn("inp w-full min-w-0")}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleApplyFilters}>Search</Button>
+          <Button variant="ghost" onClick={handleClearFilters}
+            disabled={!filterProvider && !filterStart && !filterEnd}>Clear</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 
 function RequestRow({ detail, index, handleViewDetail, providerNameCache }) {
+  const sm = statusMeta(detail.status);
+  const inTokens = getInputTokens(detail.tokens).toLocaleString();
+  const outTokens = detail.tokens?.completion_tokens?.toLocaleString() || "0";
   return (
-                  <tr
-                    key={`${detail.id}-${index}`}
-                    className="border-b border-black/5 dark:border-white/5 last:border-b-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
-                  >
-                    <td className="whitespace-nowrap p-4 text-sm text-text-main">
-                      {new Date(detail.timestamp).toLocaleString()}
-                    </td>
-                    <td className="max-w-[260px] truncate p-4 font-mono text-sm text-text-main">
-                      {detail.model}
-                    </td>
-                    <td className="max-w-[180px] truncate p-4 text-sm text-text-main">
-                       <span className="font-medium">
-                         {getProviderName(detail.provider, providerNameCache)}
-                       </span>
-                     </td>
-                    <td className="p-4 text-sm text-text-main text-right font-mono">
-                      {getInputTokens(detail.tokens).toLocaleString()}
-                    </td>
-                    <td className="p-4 text-sm text-text-main text-right font-mono">
-                      {detail.tokens?.completion_tokens?.toLocaleString() || 0}
-                    </td>
-                    <td className="p-4 text-sm text-text-muted">
-                      <div className="flex flex-col gap-0.5">
-                        <div>TTFT: <span className="font-mono">{detail.latency?.ttft || 0}ms</span></div>
-                        <div>Total: <span className="font-mono">{detail.latency?.total || 0}ms</span></div>
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewDetail(detail)}
-                      >
-                        Detail
-                      </Button>
-                    </td>
-                  </tr>
+    <div
+      key={`${detail.id}-${index}`}
+      className="row d-row"
+      style={{ cursor: "pointer" }}
+      onClick={() => handleViewDetail(detail)}
+    >
+      <div className="dim tabular-nums" style={{ fontSize: 11 }}>{new Date(detail.timestamp).toLocaleString()}</div>
+      <div className="min-w-0">
+        <div>
+          <span className="cr-name">{getProviderName(detail.provider, providerNameCache)}</span>
+          {" "}
+          <span className="dim">{detail.model}</span>
+        </div>
+        <div className="sid">TTFT: <span className="tabular-nums">{detail.latency?.ttft || 0}ms</span> · Total: <span className="tabular-nums">{detail.latency?.total || 0}ms</span></div>
+      </div>
+      <div className={`st ${sm.cls}`}>
+        {sm.led && <span className={`led ${sm.led}`} />}
+        {sm.label}
+      </div>
+      <div className="dim tabular-nums" style={{ fontSize: 11, textAlign: "right" }}>
+        {detail.tokens != null ? `${inTokens} → ${outTokens}` : "—"}
+      </div>
+    </div>
   );
 }
 
@@ -302,47 +302,37 @@ export default function RequestDetailsTab() {
     <div className="flex min-w-0 flex-col gap-6">
       <RequestFilters filterProvider={filterProvider} setFilterProvider={setFilterProvider} filterStart={filterStart} setFilterStart={setFilterStart} filterEnd={filterEnd} setFilterEnd={setFilterEnd} providers={providers} cn={cn} handleApplyFilters={handleApplyFilters} handleClearFilters={handleClearFilters} />
 
-      <Card padding="none">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px]">
-            <thead>
-              <tr className="border-b border-black/5 dark:border-white/5">
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Timestamp</th>
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Model</th>
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Provider</th>
-                <th className="text-right p-4 text-sm font-semibold text-text-main">Input Tokens</th>
-                <th className="text-right p-4 text-sm font-semibold text-text-main">Output Tokens</th>
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Latency</th>
-                <th className="text-center p-4 text-sm font-semibold text-text-main">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading || !isFilterReady ? (
-                <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
-                      Loading...
-                    </div>
-                  </td>
-                </tr>
-              ) : details.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    No request details found
-                  </td>
-                </tr>
-              ) : (
-                details.map((detail, index) => (
-                  <RequestRow key={index} detail={detail} index={index} handleViewDetail={handleViewDetail} providerNameCache={providerNameCache} />
-                ))
-              )}
-            </tbody>
-          </table>
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>03</b> · Request details</span>
+        </div>
+        <div className="row head d-row">
+          <div>Time</div>
+          <div>Provider / Model</div>
+          <div>Status</div>
+          <div style={{ textAlign: "right" }}>Tokens</div>
+        </div>
+        <div>
+          {loading || !isFilterReady ? (
+            <div className="p-8 text-center text-text-muted">
+              <div className="flex items-center justify-center gap-2">
+                <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
+                Loading...
+              </div>
+            </div>
+          ) : details.length === 0 ? (
+            <div className="p-8 text-center text-text-muted">
+              No request details found
+            </div>
+          ) : (
+            details.map((detail, index) => (
+              <RequestRow key={index} detail={detail} index={index} handleViewDetail={handleViewDetail} providerNameCache={providerNameCache} />
+            ))
+          )}
         </div>
 
         {!loading && details.length > 0 && (
-          <div className="border-t border-black/5 dark:border-white/5">
+          <div className="border-t border-border-subtle p-3">
             <Pagination
               currentPage={pagination.page}
               pageSize={pagination.pageSize}
@@ -352,7 +342,7 @@ export default function RequestDetailsTab() {
             />
           </div>
         )}
-      </Card>
+      </div>
 
       <Drawer
         isOpen={isDrawerOpen}
@@ -393,11 +383,9 @@ export default function RequestDetailsTab() {
               </div>
               <div>
                 <span className="text-text-muted">Status:</span>{" "}
-                <span className={cn(
-                  "font-medium",
-                  selectedDetail.status === "success" ? "text-green-600" : "text-red-600"
-                )}>
-                  {selectedDetail.status}
+                <span className="inline-flex items-center gap-1.5">
+                  <span className={`led ${selectedDetail.status === "success" ? "ok" : "down"}`} />
+                  <span className="font-medium">{selectedDetail.status}</span>
                 </span>
               </div>
               <div>

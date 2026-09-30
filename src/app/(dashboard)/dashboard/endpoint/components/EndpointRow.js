@@ -1,21 +1,22 @@
 "use client";
 
-import { Input } from "@/shared/components";
-
 /** Reusable endpoint row component */
 export default function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-          (badge === "CF" || badge === "TS") ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
+    <div className="flex items-center gap-3">
+      <span className={`text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded shrink-0 min-w-[76px] text-center border ${
+          (badge === "CF" || badge === "TS") ? "bg-primary/10 text-primary border-primary/30" : "bg-surface-2 text-text-muted border-border"
         }`}>{label}</span>
-      <Input value={url} readOnly className="flex-1 font-mono text-sm" />
-      <button
-        onClick={() => onCopy(url, copyId)}
-        className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-colors shrink-0"
-      >
-        <span className="material-symbols-outlined text-[18px]">{copied === copyId ? "check" : "content_copy"}</span>
-      </button>
+      <div className="flex items-center flex-1 min-w-0 px-3 h-9 rounded border border-border bg-input/50">
+        <code className="flex-1 truncate text-[13px] text-text-main font-mono">{url}</code>
+        <button
+          onClick={() => onCopy(url, copyId)}
+          className="p-1.5 hover:text-primary transition-colors shrink-0 text-text-muted"
+          title="Copy"
+        >
+          <span className="material-symbols-outlined text-[17px]">{copied === copyId ? "check" : "content_copy"}</span>
+        </button>
+      </div>
       {actions}
     </div>
   );

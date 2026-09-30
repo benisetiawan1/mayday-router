@@ -91,7 +91,7 @@ export default function EndpointPresetControl({
       <select
         value={selectedName}
         onChange={(event) => handleSelect(event.target.value)}
-        className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+        className="inp flex-1 w-full"
       >
         <option value="">Manual / current endpoint</option>
         {presets.map((preset) => (
@@ -104,7 +104,7 @@ export default function EndpointPresetControl({
         type="button"
         onClick={handleSave}
         disabled={!baseUrl || !apiKey}
-        className="px-2 py-1.5 rounded border text-xs bg-surface border-border text-text-main hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+        className="btn shrink-0"
         title="Save current Base URL and API key as a browser-local preset"
       >
         Save

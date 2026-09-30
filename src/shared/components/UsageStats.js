@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { FREE_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
 
 // Keep providers without serviceKinds (default LLM) or with "llm" in serviceKinds
@@ -11,12 +12,9 @@ function isLLMProvider(id) {
   return p.serviceKinds.includes("llm");
 }
 import Badge from "./Badge";
-import Card from "./Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
 import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/components/UsageTable";
-import dynamic from "next/dynamic";
-// Lazy-load: keeps @xyflow/react out of the shared bundle until topology renders
-const ProviderTopology = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderTopology"), { ssr: false });
+import ProviderTopology, { RequestFeed } from "@/app/(dashboard)/dashboard/usage/components/ProviderTopology";
 import UsageChart from "@/app/(dashboard)/dashboard/usage/components/UsageChart";
 
 // Skeleton placeholders sized to match the final content so the layout does
@@ -31,10 +29,7 @@ const overviewSkeleton = (
 );
 
 const topologySkeleton = (
-  <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-    <div className="h-[320px] w-full animate-pulse rounded-lg border border-border bg-bg-subtle/50 sm:h-[480px]" aria-hidden="true" />
-    <div className="h-[320px] w-full animate-pulse rounded-lg border border-border bg-bg-subtle/50 sm:h-[480px]" aria-hidden="true" />
-  </div>
+  <div className="h-40 w-full animate-pulse rounded-lg border border-border bg-bg-subtle/50 sm:h-48" aria-hidden="true" />
 );
 
 const chartSkeleton = (
@@ -44,75 +39,6 @@ const chartSkeleton = (
 const tableSkeleton = (
   <div className="h-64 w-full animate-pulse rounded-lg border border-border bg-bg-subtle/50" aria-hidden="true" />
 );
-
-function timeAgo(timestamp) {
-  const diff = Math.floor((Date.now() - new Date(timestamp)) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
-// Auto-update time display every second without re-rendering parent
-function TimeAgo({ timestamp }) {
-  const [, setTick] = useState(0);
-  
-  useEffect(() => {
-    const timer = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  
-  return <>{timeAgo(timestamp)}</>;
-}
-
-const EMPTY_REQUESTS = [];
-
-function RecentRequests({ requests = EMPTY_REQUESTS }) {
-  return (
-    <Card className="flex min-w-0 flex-col overflow-hidden" padding="sm" style={{ height: 480 }}>
-      {/* Header */}
-      <div className="px-1 py-2 border-b border-border shrink-0">
-        <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Recent Requests</span>
-      </div>
-
-      {!requests.length ? (
-        <div className="flex-1 flex items-center justify-center text-text-muted text-sm">No requests yet.</div>
-      ) : (
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full min-w-[300px] border-collapse text-xs">
-            <thead className="sticky top-0 bg-bg z-10">
-              <tr className="border-b border-border">
-                <th className="py-1.5 text-left font-semibold text-text-muted w-2"><span className="sr-only">Status</span></th>
-                <th className="py-1.5 text-left font-semibold text-text-muted">Model</th>
-                <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">In / Out</th>
-                <th className="py-1.5 text-right font-semibold text-text-muted">When</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {requests.map((r, i) => {
-                const ok = !r.status || r.status === "ok" || r.status === "success";
-                return (
-                  <tr key={`${r.timestamp}-${r.model}-${i}`} className="hover:bg-bg-subtle transition-colors">
-                    <td className="py-1.5">
-                      <span className={`block w-1.5 h-1.5 rounded-full ${ok ? "bg-success" : "bg-error"}`} aria-label={ok ? "Success" : "Error"} />
-                    </td>
-                    <td className="py-1.5 font-mono truncate max-w-[120px]" title={r.model}>{r.model}</td>
-                    <td className="py-1.5 text-right whitespace-nowrap">
-                      <span className="text-primary">{fmt(r.promptTokens)}↑</span>
-                      {" "}
-                      <span className="text-success">{fmt(r.completionTokens)}↓</span>
-                    </td>
-                    <td className="py-1.5 text-right text-text-muted whitespace-nowrap"><TimeAgo timestamp={r.timestamp} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
-  );
-}
 
 function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
   return Object.entries(dataMap || {})
@@ -284,8 +210,26 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
   const hasLoadedStats = useRef(false);
+  // Pause feed (live-flow panel): freezes only liveRequests/liveFeed/activeRequests
+  const [feedPaused, setFeedPaused] = useState(false);
+  const feedPausedRef = useRef(false);
+  useEffect(() => { feedPausedRef.current = feedPaused; }, [feedPaused]);
   const period = periodProp ?? periodLocal;
   const setPeriod = setPeriodProp ?? setPeriodLocal;
+
+  // Top providers for the current period (real aggregates)
+  const topProviders = useMemo(() => {
+    const bp = stats?.byProvider || {};
+    return Object.entries(bp)
+      .filter(([, d]) => (d?.requests || 0) > 0)
+      .sort((a, b) => (b[1].requests || 0) - (a[1].requests || 0))
+      .slice(0, 8);
+  }, [stats?.byProvider]);
+  const totalProviderRequests = useMemo(
+    () => topProviders.reduce((s, [, d]) => s + (d.requests || 0), 0),
+    [topProviders]
+  );
+  const labelFromProviderKey = (key) => AI_PROVIDERS[key]?.name || key;
   // Fetch connected providers once, deduplicate by provider type
   // Always include noAuth free providers (e.g. opencode) regardless of connections
   useEffect(() => {
@@ -353,10 +297,16 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         // Always merge only real-time fields, never overwrite full stats from REST
         setStats((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
+          // Pause feed: freeze only the live-flow fields; long-term stats keep updating
+          const liveFields = feedPausedRef.current ? {} : {
             activeRequests: data.activeRequests,
             recentRequests: data.recentRequests,
+            liveRequests: data.liveRequests,
+            liveFeed: data.liveFeed,
+          };
+          return {
+            ...prev,
+            ...liveFields,
             errorProvider: data.errorProvider,
             pending: data.pending,
           };
@@ -545,55 +495,98 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   if (!stats && !loading) return <div className="text-text-muted">Failed to load usage statistics.</div>;
 
   return (
-    <div className="flex min-w-0 flex-col gap-6">
+    <div className="flex min-w-0 flex-col">
       {/* Period selector (hidden when controlled by parent) */}
       {!hidePeriodSelector && <PeriodSelector period={period} setPeriod={setPeriod} fetching={fetching} />}
 
-      {/* Overview cards */}
-      {loading ? overviewSkeleton : <OverviewCards stats={stats} />}
-
-      {/* Provider topology + Recent Requests */}
-      {loading ? topologySkeleton : (
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+      {/* LIVE · Active requests (v2.1 layout: live panel first) */}
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>LIVE</b> · Active requests — who is receiving & answering now</span>
+          <div className="acts">
+            <button type="button" className="btn ghost" onClick={() => setFeedPaused((v) => !v)}>
+              {feedPaused ? "▶ Resume feed" : "⏸ Pause feed"}
+            </button>
+            <Link href="/dashboard/console-log" className="btn ghost">Open console log</Link>
+          </div>
+        </div>
+        {loading ? topologySkeleton : (
           <ProviderTopology
             providers={providers}
             activeRequests={stats.activeRequests || []}
-            lastProvider={stats.recentRequests?.[0]?.provider || ""}
-            errorProvider={stats.errorProvider || ""}
+            recentRequests={stats.recentRequests || []}
+            liveRequests={stats.liveRequests || []}
           />
-          <RecentRequests requests={stats.recentRequests || []} />
+        )}
+      </div>
+
+      {/* 02 · Requests + 03 · Top providers (v2.1 side-by-side grid) */}
+      <div className="usage-grid">
+        <div className="panel" style={{ marginBottom: 0 }}>
+          <div className="panel-head">
+            <span className="t"><b>02</b> · Requests</span>
+          </div>
+          {loading ? chartSkeleton : <UsageChart period={period} />}
+          {loading ? overviewSkeleton : <OverviewCards stats={stats} />}
         </div>
-      )}
+        {!loading && topProviders.length > 0 && (
+          <div className="panel" style={{ marginBottom: 0 }}>
+            <div className="panel-head"><span className="t"><b>03</b> · Top providers</span></div>
+            {topProviders.map(([key, d]) => (
+              <div key={key} className="row" style={{ gridTemplateColumns: "1fr 110px 70px" }}>
+                <span className="cr-name">{labelFromProviderKey(key)}</span>
+                <span className="dim" style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{(d.requests || 0).toLocaleString("en-US")}</span>
+                <span className="faint" style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{totalProviderRequests > 0 ? Math.round((100 * (d.requests || 0)) / totalProviderRequests) : 0}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* Token / Cost chart - sync period */}
-      {loading ? chartSkeleton : <UsageChart period={period} />}
+      {/* 04 · Request feed (v2.1 log lines) */}
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>04</b> · Request feed</span>
+          <div className="acts"><span className="tag">{(stats?.liveFeed || []).length > 0 ? `${(stats?.liveFeed || []).length} recent · live` : "retained"}</span></div>
+        </div>
+        {loading ? null : (
+          <RequestFeed
+            liveFeed={stats.liveFeed || []}
+            recentRequests={stats.recentRequests || []}
+          />
+        )}
+      </div>
 
-      {/* Table with dropdown selector */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* Recent requests feed lives inside the live-flow panel (merged, single list) */}
+
+      {/* Usage breakdown table */}
+      <div className="panel">
+        <div className="panel-head">
           <select
             value={tableView}
             onChange={(e) => setTableView(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
-            style={{ colorScheme: 'auto' }}
+            className="inp"
+            style={{ width: "auto", height: 26, padding: "0 6px" }}
           >
             {TABLE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <div className="grid grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex">
-            <button type="button"
-              onClick={() => setViewMode("costs")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "costs" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-            >
-              Costs
-            </button>
-            <button type="button"
-              onClick={() => setViewMode("tokens")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "tokens" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-            >
-              Tokens
-            </button>
+          <div className="acts">
+            <div className="seg">
+              <button type="button"
+                onClick={() => setViewMode("costs")}
+                className={viewMode === "costs" ? "on" : ""}
+              >
+                Costs
+              </button>
+              <button type="button"
+                onClick={() => setViewMode("tokens")}
+                className={viewMode === "tokens" ? "on" : ""}
+              >
+                Tokens
+              </button>
+            </div>
           </div>
         </div>
         {loading ? tableSkeleton : activeTableConfig && (

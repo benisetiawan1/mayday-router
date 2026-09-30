@@ -2,19 +2,20 @@
 
 import { cn } from "@/shared/utils/cn";
 
+// Control Room v3: base look comes from .btn in globals.css; variants map onto it.
 const variants = {
-  primary: "bg-brand-500 hover:bg-brand-600 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
-  secondary: "bg-surface-2 hover:bg-surface-3 text-text-main border border-border disabled:opacity-50",
-  outline: "border border-border text-text-main hover:bg-surface-2 hover:border-brand-500/40",
-  ghost: "text-text-muted hover:bg-surface-2 hover:text-text-main",
-  danger: "bg-red-500 hover:bg-red-600 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
-  success: "bg-green-600 hover:bg-green-700 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
+  primary: "primary",
+  secondary: "",
+  outline: "",
+  ghost: "ghost",
+  danger: "danger",
+  success: "bg-green-600 hover:bg-green-700 !text-white border-transparent",
 };
 
 const sizes = {
-  sm: "h-7 px-3 text-xs rounded-[8px]",
-  md: "h-9 px-4 text-sm rounded-[10px]",
-  lg: "h-11 px-6 text-sm rounded-[10px]",
+  sm: "", // .btn default = 28px mockup size
+  md: "h-8 px-4",
+  lg: "h-9 px-5",
 };
 
 export default function Button({
@@ -32,8 +33,8 @@ export default function Button({
   return (
     <button type="button"
       className={cn(
-        "inline-flex items-center justify-center gap-2 font-semibold transition-all duration-150 ease-out cursor-pointer",
-        "active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
+        "btn",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
         variants[variant],
         sizes[size],
         fullWidth && "w-full",

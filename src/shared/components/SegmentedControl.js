@@ -2,10 +2,11 @@
 
 import { cn } from "@/shared/utils/cn";
 
+// Control Room v3: .seg mockup — flat buttons in bordered track
 const SEGMENT_SIZES = {
-  sm: "h-7 text-xs",
-  md: "h-9 text-sm",
-  lg: "h-11 text-base",
+  sm: "text-[10.5px] px-[10px] py-[5px]",
+  md: "text-[10.5px] px-[10px] py-[5px]",
+  lg: "text-[11.5px] px-3 py-[7px]",
 };
 
 const EMPTY_OPTIONS = [];
@@ -21,8 +22,8 @@ export default function SegmentedControl({
   return (
     <div
       className={cn(
-        "inline-flex items-center p-1 rounded-[10px] overflow-x-auto",
-        "bg-surface-2",
+        "inline-flex items-center overflow-x-auto",
+        "rounded-[3px] border border-border bg-bg",
         className
       )}
     >
@@ -31,10 +32,10 @@ export default function SegmentedControl({
           key={option.value}
           onClick={() => onChange(option.value)}
           className={cn(
-            "shrink-0 px-4 rounded-[8px] font-medium transition-all",
+            "shrink-0 font-medium uppercase tracking-[0.08em] transition-all",
             SEGMENT_SIZES[size],
             value === option.value
-              ? "bg-surface text-text-main shadow-sm"
+              ? "bg-primary text-white font-bold"
               : "text-text-muted hover:text-text-main"
           )}
         >

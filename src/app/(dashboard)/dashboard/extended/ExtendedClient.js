@@ -1,34 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Toggle } from "@/shared/components";
 
 async function api(url, opts) {
   const res = await fetch(url, { credentials: "include", ...opts });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
   return res.json();
-}
-
-function Section({ title, children }) {
-  return (
-    <section className="border border-border-subtle bg-surface rounded-[14px] p-5 shadow-[var(--shadow-soft)]">
-      <h2 className="text-sm font-semibold mb-3">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function Toggle({ label, checked, onChange }) {
-  return (
-    <label className="flex items-center justify-between gap-3 py-1 cursor-pointer">
-      <span className="text-[13px]">{label}</span>
-      <input
-        type="checkbox"
-        checked={!!checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="size-4 accent-primary cursor-pointer"
-      />
-    </label>
-  );
 }
 
 export default function ExtendedClient() {
@@ -47,6 +25,7 @@ export default function ExtendedClient() {
     } catch {}
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap fetch.
   useEffect(() => { load(); }, [load]);
 
   const patchSetting = useCallback(async (key, value) => {
@@ -152,134 +131,166 @@ export default function ExtendedClient() {
   useEffect(() => { if (settings.hermesBridgeEnabled) loadHermes(); }, [settings.hermesBridgeEnabled]);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-xl font-bold">9Router Extended</h1>
-        {msg && <p className="text-[12px] text-muted">{msg}</p>}
-      </div>
+    <div className="flex w-full flex-col gap-4">
+      {msg && <p className="dim text-[12px]">{msg}</p>}
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Section title="Router & Dedup">
-          <Toggle
-            label="Skill Router (TF-IDF klasifikasi user intent ke skill)"
-            checked={settings.extendedSkillRouterEnabled}
-            onChange={(v) => patchSetting("extendedSkillRouterEnabled", v)}
-          />
-          <Toggle
-            label="Session Skill Dedup (hemat token, inject penuh sekali per sesi)"
-            checked={settings.extendedSkillDedupEnabled}
-            onChange={(v) => patchSetting("extendedSkillDedupEnabled", v)}
-          />
-        </Section>
-
-        <Section title="Hermes Memory Bridge (read-only, default OFF)">
-          <Toggle
-            label="Aktifkan bridge (baca snapshot Mayday, tidak sentuh file Hermes)"
-            checked={settings.hermesBridgeEnabled}
-            onChange={(v) => patchSetting("hermesBridgeEnabled", v)}
-          />
-          <button
-            type="button"
-            onClick={importHermes}
-            className="mt-2 px-3 py-1.5 rounded-md bg-primary text-white text-[12px] font-medium hover:bg-primary/90 cursor-pointer"
-          >
-            Import dari Hermes (read-only)
-          </button>
-          {(hermes.memory.length > 0 || hermes.user.length > 0) && (
-            <div className="mt-3 text-[12px] space-y-1 max-h-48 overflow-auto">
-              {[...hermes.memory, ...hermes.user].map((e, i) => (
-                <p key={i} className="truncate text-muted">§ {e}</p>
-              ))}
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>01</b> · Router & Dedup</span>
+        </div>
+        <div className="spec">
+          <div className="kv">
+            <div className="k">Skill Router (TF-IDF klasifikasi user intent ke skill)</div>
+            <div className="v" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle checked={settings.extendedSkillRouterEnabled} onChange={(v) => patchSetting("extendedSkillRouterEnabled", v)} />
+              <span className="dim">manifest-driven</span>
             </div>
-          )}
-        </Section>
+          </div>
+          <div className="kv">
+            <div className="k">Session Skill Dedup (hemat token, inject penuh sekali per sesi)</div>
+            <div className="v" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle checked={settings.extendedSkillDedupEnabled} onChange={(v) => patchSetting("extendedSkillDedupEnabled", v)} />
+              <span className="dim">once per session</span>
+            </div>
+          </div>
+          <div className="kv">
+            <div className="k">Aktifkan bridge (baca snapshot Mayday, tidak sentuh file Hermes)</div>
+            <div className="v" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Toggle checked={settings.hermesBridgeEnabled} onChange={(v) => patchSetting("hermesBridgeEnabled", v)} />
+              <span className="dim">read-only snapshot</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: "10px 16px", borderTop: "1px solid var(--color-border-subtle)" }}>
+          <button type="button" className="btn" onClick={importHermes}>Import dari Hermes (read-only)</button>
+        </div>
+        {(hermes.memory.length > 0 || hermes.user.length > 0) && (
+          <div className="dim text-[12px]" style={{ padding: "0 16px 12px", maxHeight: 180, overflow: "auto" }}>
+            {[...hermes.memory, ...hermes.user].map((e, i) => (
+              <p key={i} className="truncate">§ {e}</p>
+            ))}
+          </div>
+        )}
       </div>
 
-      <Section title="Custom Skill Studio (manifest ke disk skills/<id>)">
-        <div className="grid gap-3">
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>02</b> · Custom Skill Studio (manifest ke disk skills/&lt;id&gt;)</span>
+          <div className="acts">
+            <button type="button" className="btn primary" onClick={cancelEdit}>+ New skill</button>
+          </div>
+        </div>
+
+        <div className="frm">
+          <span className="fl">id</span>
           <input
-            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
+            className="inp"
             placeholder="id (a-z, 0-9, -, _)"
             value={form.id}
             disabled={!!editingId}
             onChange={(e) => setForm({ ...form, id: e.target.value })}
           />
+          <span className="dim">slug</span>
+        </div>
+        <div className="frm">
+          <span className="fl">name</span>
           <input
-            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
+            className="inp"
             placeholder="name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
+          <span className="dim" />
+        </div>
+        <div className="frm">
+          <span className="fl">description</span>
           <textarea
-            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
+            className="inp"
+            style={{ height: "auto", padding: "8px 10px", lineHeight: 1.5 }}
             rows={2}
             placeholder="description"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
+          <span className="dim" />
+        </div>
+        <div className="frm">
+          <span className="fl">prompt_template</span>
           <textarea
-            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px] font-mono"
+            className="inp"
+            style={{ height: "auto", padding: "8px 10px", lineHeight: 1.5, fontFamily: "var(--font-jetbrains, monospace)" }}
             rows={5}
             placeholder="prompt_template"
             value={form.prompt}
             onChange={(e) => setForm({ ...form, prompt: e.target.value })}
           />
+          <span className="dim">markdown</span>
+        </div>
+        <div className="frm">
+          <span className="fl">triggers</span>
           <input
-            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
+            className="inp"
             placeholder="triggers (pisahkan koma): review, kode, bug"
             value={form.triggers}
             onChange={(e) => setForm({ ...form, triggers: e.target.value })}
           />
+          <span className="dim" />
+        </div>
+        <div className="frm">
+          <span className="fl">keywords</span>
           <input
-            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px]"
+            className="inp"
             placeholder="keywords (pisahkan koma): review, code, security"
             value={form.keywords}
             onChange={(e) => setForm({ ...form, keywords: e.target.value })}
           />
+          <span className="dim" />
+        </div>
+        <div className="frm">
+          <span className="fl">config_schema</span>
           <textarea
-            className="rounded-md border border-border-subtle bg-surface-2 px-3 py-2 text-[13px] font-mono"
+            className="inp"
+            style={{ height: "auto", padding: "8px 10px", lineHeight: 1.5, fontFamily: "var(--font-jetbrains, monospace)" }}
             rows={3}
             placeholder='config_schema (JSON): [{"key":"variance","label":"Variance","min":0,"max":1,"default":0.5}]'
             value={form.configSchema}
             onChange={(e) => setForm({ ...form, configSchema: e.target.value })}
           />
-          <label className="flex items-center gap-2 text-[13px] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.routingMode}
-              onChange={(e) => setForm({ ...form, routingMode: e.target.checked })}
-              className="size-4 accent-primary"
-            />
-            Routable (ikut Skill Router)
-          </label>
-          <button
-            type="button"
-            onClick={saveSkill}
-            className="px-3 py-1.5 rounded-md bg-primary text-white text-[12px] font-medium hover:bg-primary/90 cursor-pointer w-fit"
-          >
-            {editingId ? "Update skill" : "Simpan skill"}
-          </button>
-          {editingId && (
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="px-3 py-1.5 rounded-md border border-border-subtle text-[12px] hover:bg-surface-2 cursor-pointer w-fit"
-            >
-              Batal
+          <span className="dim">JSON</span>
+        </div>
+        <div className="frm">
+          <span className="fl">Routable (ikut Skill Router)</span>
+          <Toggle checked={form.routingMode} onChange={(v) => setForm({ ...form, routingMode: v })} />
+          <span className="dim" />
+        </div>
+
+        <div className="frm">
+          <span className="fl" />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" className="btn primary" onClick={saveSkill}>
+              {editingId ? "Update skill" : "Simpan skill"}
             </button>
-          )}
+            {editingId && (
+              <button type="button" className="btn" onClick={cancelEdit}>Batal</button>
+            )}
+          </div>
+          <span className="dim" />
         </div>
 
         {skills.length > 0 && (
-          <ul className="mt-4 divide-y divide-border-subtle">
+          <div style={{ borderTop: "1px solid var(--color-border-subtle)" }}>
             {skills.map((s) => (
-              <li key={s.id} className="py-2 flex items-center justify-between gap-3">
+              <div
+                key={s.id}
+                className="row"
+                style={{ gridTemplateColumns: "1fr auto", alignItems: "start", paddingTop: 10, paddingBottom: 10 }}
+              >
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium truncate">{s.name} <span className="text-muted font-normal">({s.id})</span></p>
-                  <p className="text-[12px] text-muted truncate">{s.description}</p>
+                  <p className="text-[13px] font-medium truncate">{s.name} <span className="dim font-normal">({s.id})</span></p>
+                  <p className="dim text-[12px] truncate">{s.description}</p>
                   {Array.isArray(s.config_schema) && s.config_schema.map((c) => (
-                    <div key={c.key} className="mt-1 flex items-center gap-2">
-                      <span className="text-[11px] text-muted w-28 truncate">{c.label || c.key}</span>
+                    <div key={c.key} style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className="dim text-[11px]" style={{ width: 112, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.label || c.key}</span>
                       <input
                         type="range"
                         min={c.min ?? 0}
@@ -289,31 +300,21 @@ export default function ExtendedClient() {
                         onChange={(e) => patchSetting(`ext_${s.id}_${c.key}`, Number(e.target.value))}
                         className="flex-1 accent-primary"
                       />
-                      <span className="text-[11px] tabular-nums w-8">
+                      <span className="text-[11px] tabular-nums" style={{ width: 32 }}>
                         {settings[`ext_${s.id}_${c.key}`] ?? c.default ?? 0}
                       </span>
                     </div>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => deleteSkill(s.id)}
-                  className="px-2 py-1 rounded-md border border-border-subtle text-[11px] hover:bg-surface-2 cursor-pointer shrink-0"
-                >
-                  Hapus
-                </button>
-                <button
-                  type="button"
-                  onClick={() => editSkill(s)}
-                  className="px-2 py-1 rounded-md border border-border-subtle text-[11px] hover:bg-surface-2 cursor-pointer shrink-0"
-                >
-                  Edit
-                </button>
-              </li>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button type="button" className="btn" onClick={() => deleteSkill(s.id)}>Hapus</button>
+                  <button type="button" className="btn" onClick={() => editSkill(s)}>Edit</button>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </Section>
+      </div>
     </div>
   );
 }

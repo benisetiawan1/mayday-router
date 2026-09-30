@@ -46,7 +46,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = EMPTY_API_KEYS
       <select
         value={mode}
         onChange={handleSelect}
-        className="w-full min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
+        className="inp w-full min-w-0"
       >
         {apiKeys.map((k) => (
           <option key={k.id} value={k.key}>{k.key}</option>
@@ -60,7 +60,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = EMPTY_API_KEYS
           onChange={handleCustomInput}
           placeholder="sk-..."
           aria-label="Custom API key"
-          className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
+          className="inp w-full min-w-0"
         />
       )}
     </div>

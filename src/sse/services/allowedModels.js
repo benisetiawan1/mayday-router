@@ -677,6 +677,35 @@ export async function buildModelsList(kindFilter, options = {}) {
       if (Number.isFinite(caps.contextWindow)) model.context_length = caps.contextWindow;
       if (Number.isFinite(caps.maxOutput)) model.max_completion_tokens = caps.maxOutput;
     }
+    // Detail metadata for client pickers (VS Code / Kilo Code / CLI). Without
+    // inputModalities/name clients assume text-only and refuse to attach images.
+    model.name = entry.name || model.id;
+    const inputModalities = ["text"];
+    if (caps.vision) inputModalities.push("image");
+    if (caps.videoInput) inputModalities.push("video");
+    if (caps.audioInput) inputModalities.push("audio");
+    model.inputModalities = inputModalities;
+    const outputModalities = ["text"];
+    if (caps.imageOutput) outputModalities.push("image");
+    if (caps.audioOutput) outputModalities.push("audio");
+    model.outputModalities = outputModalities;
+    if (entry.description) {
+      model.description = entry.description;
+    } else {
+      const bits = [];
+      if (Number.isFinite(caps.contextWindow)) bits.push(`${Math.round(caps.contextWindow / 1000)}K context`);
+      if (caps.vision) bits.push("vision");
+      if (caps.videoInput) bits.push("video input");
+      if (caps.audioInput) bits.push("audio input");
+      if (caps.reasoning) bits.push("reasoning");
+      if (caps.tools) bits.push("tool calling");
+      if (bits.length) model.description = bits.join(", ");
+    }
+    model.pricing = entry.pricing || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    if (Number.isFinite(caps.contextWindow)) model.contextLength = caps.contextWindow;
+    if (Number.isFinite(caps.maxOutput)) model.maxOutputTokens = caps.maxOutput;
+    model.priceInput = "0.000000";
+    model.priceOutput = "0.000000";
     dedupedModels.push(model);
   }
 

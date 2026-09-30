@@ -32,11 +32,11 @@ export default function Select({
           onChange={onChange}
           disabled={disabled}
           className={cn(
-            "w-full py-2.5 px-3 pr-10 text-sm text-text-main",
-            "bg-surface-2 border border-transparent rounded-[10px] appearance-none",
+            "w-full h-[30px] px-[10px] pr-8 text-xs text-text-main",
+            "bg-bg border border-border rounded-[3px] appearance-none",
             "focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/40",
             "transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed",
-            "text-[16px] sm:text-sm",
+            "text-[16px] sm:text-xs",
             error && "ring-1 ring-red-500 focus:ring-2 focus:ring-red-500/40 border-red-500/40",
             selectClassName
           )}
@@ -51,8 +51,8 @@ export default function Select({
             </option>
           ))}
         </select>
-        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-text-muted">
-          <span className="material-symbols-outlined text-[20px]">expand_more</span>
+        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-text-muted">
+          <span className="material-symbols-outlined text-[16px]">expand_more</span>
         </div>
       </div>
       {error && (

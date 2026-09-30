@@ -3,9 +3,19 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Card, Badge, Button, Toggle, AddCustomEmbeddingModal } from "@/shared/components";
+import { Button, Toggle, AddCustomEmbeddingModal } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
+
+// Top-level kind navigation tabs — real Next Links, .on = current kind.
+const KIND_TABS = [
+  { id: "embedding", label: "Embedding", href: "/dashboard/media-providers/embedding" },
+  { id: "image", label: "Image", href: "/dashboard/media-providers/image" },
+  { id: "video", label: "Video", href: "/dashboard/media-providers/video" },
+  { id: "tts", label: "TTS", href: "/dashboard/media-providers/tts" },
+  { id: "stt", label: "STT", href: "/dashboard/media-providers/stt" },
+  { id: "web", label: "Web", href: "/dashboard/media-providers/web" },
+];
 
 // Kinds that support combos (currently disabled for image/tts — temporarily hidden).
 // webSearch/webFetch handled by /web page.
@@ -20,14 +30,14 @@ function getEffectiveStatus(conn) {
 }
 
 function MediaProviderCardStatus({ isNoAuth, allDisabled, total, connected, error }) {
-  if (isNoAuth) return <Badge variant="success" size="sm">Ready</Badge>;
-  if (allDisabled) return <Badge variant="default" size="sm">Disabled</Badge>;
-  if (total === 0) return <span className="text-xs text-text-muted">No connections</span>;
+  if (isNoAuth) return <span className="tag g"><span className="led ok"></span>Ready</span>;
+  if (allDisabled) return <span className="tag"><span className="led info"></span>Disabled</span>;
+  if (total === 0) return <span className="tag"><span className="led info"></span>No connections</span>;
   return (
     <>
-      {connected > 0 && <Badge variant="success" size="sm" dot>{connected} Connected</Badge>}
-      {error > 0 && <Badge variant="error" size="sm" dot>{error} Error</Badge>}
-      {connected === 0 && error === 0 && <Badge variant="default" size="sm">{total} Added</Badge>}
+      {connected > 0 && <span className="tag g"><span className="led ok"></span>{connected} Connected</span>}
+      {error > 0 && <span className="tag w"><span className="led warn"></span>{error} Error</span>}
+      {connected === 0 && error === 0 && <span className="tag"><span className="led info"></span>{total} Added</span>}
     </>
   );
 }
@@ -49,43 +59,28 @@ function MediaProviderCard({ provider, kind, connections, isCustom, onToggle }) 
   };
 
   return (
-    <Link href={`/dashboard/media-providers/${kind}/${provider.id}`} className="group">
-      <Card
-        padding="xs"
-        className={`h-full hover:bg-black/[0.01] dark:hover:bg-white/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
-      >
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div
-              className="size-8 rounded-lg flex items-center justify-center shrink-0"
-              style={{ backgroundColor: `${provider.color?.length > 7 ? provider.color : (provider.color ?? "#888") + "15"}` }}
-            >
-              <ProviderIcon
-                src={`/providers/${provider.id}.webp`}
-                alt={provider.name}
-                size={30}
-                className="object-contain rounded-lg max-w-[30px] max-h-[30px]"
-                fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
-                fallbackColor={provider.color}
-              />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-semibold text-sm">{provider.name}</h3>
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                {isCustom && <Badge variant="default" size="sm">Custom</Badge>}
-                <MediaProviderCardStatus isNoAuth={isNoAuth} allDisabled={allDisabled} total={total} connected={connected} error={error} />
-              </div>
-            </div>
+    <Link href={`/dashboard/media-providers/${kind}/${provider.id}`} className="group block">
+      <div className={`pcard ${allDisabled ? "opacity-50" : ""}`}>
+        <div className="top">
+          <div className="plogo" style={{ background: provider.color || "#475569" }}>
+            <ProviderIcon
+              src={`/providers/${provider.id}.webp`}
+              alt={provider.name}
+              size={30}
+              className="object-contain"
+              fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
+              fallbackColor={provider.color}
+            />
           </div>
+          <div className="nm">{provider.name}</div>
           {total > 0 && (
             <button
               type="button"
-              className="shrink-0 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+              className="ml-auto opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
               onClick={handleToggleClick}
               aria-label={allDisabled ? "Enable provider" : "Disable provider"}
             >
               <Toggle
-                size="sm"
                 checked={!allDisabled}
                 onChange={() => {}}
                 title={allDisabled ? "Enable provider" : "Disable provider"}
@@ -93,7 +88,11 @@ function MediaProviderCard({ provider, kind, connections, isCustom, onToggle }) 
             </button>
           )}
         </div>
-      </Card>
+        <div className="ct">
+          {isCustom && <span className="tag">Custom</span>}
+          <MediaProviderCardStatus isNoAuth={isNoAuth} allDisabled={allDisabled} total={total} connected={connected} error={error} />
+        </div>
+      </div>
     </Link>
   );
 }
@@ -104,35 +103,17 @@ function ComboList({ combos }) {
     <div className="flex flex-col gap-2">
       {combos.map((combo) => (
         <Link key={combo.id} href={`/dashboard/media-providers/combo/${combo.id}`}>
-          <Card padding="xs" className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors cursor-pointer">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="material-symbols-outlined text-primary text-[18px]">layers</span>
-              <code className="text-sm font-mono font-medium flex-1 truncate">{combo.name}</code>
-              <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
-                {combo.models.slice(0, 6).map((entry, i) => {
-                  const pid = typeof entry === "string" ? entry.split("/")[0] : "";
-                  const p = AI_PROVIDERS[pid];
-                  return (
-                    <div key={`${entry}-${i}`} title={p?.name || entry} className="size-5 rounded flex items-center justify-center" style={{ backgroundColor: `${(p?.color ?? "#888")}15` }}>
-                      <ProviderIcon
-                        src={`/providers/${pid}.webp`}
-                        alt={p?.name || pid}
-                        size={18}
-                        className="object-contain rounded max-w-[18px] max-h-[18px]"
-                        fallbackText={p?.textIcon || pid.slice(0, 2).toUpperCase()}
-                        fallbackColor={p?.color}
-                      />
-                    </div>
-                  );
-                })}
-                {combo.models.length > 6 && (
-                  <span className="text-[10px] text-text-muted ml-1">+{combo.models.length - 6}</span>
-                )}
+          <div className="pcard">
+            <div className="top">
+              <span className="plogo" style={{ background: "#2f3238" }}>
+                <span className="material-symbols-outlined text-[18px]">layers</span>
+              </span>
+              <div>
+                <div className="nm">{combo.name}</div>
+                <div className="sid">{combo.models.length} models</div>
               </div>
-              <span className="text-[11px] text-text-muted shrink-0">{combo.models.length}</span>
-              <span className="material-symbols-outlined text-text-muted text-[16px]">chevron_right</span>
             </div>
-          </Card>
+          </div>
         </Link>
       ))}
     </div>
@@ -208,51 +189,61 @@ export default function MediaKindClient({ initialConnections, initialNodes, init
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      {(isEmbedding || supportsCombo) && (
-        <div className="flex items-center justify-end gap-2">
-          {supportsCombo && (
-            <Button size="sm" icon="add" onClick={handleCreateCombo}>Create Combo</Button>
-          )}
-          {isEmbedding && (
-            <Button size="sm" icon="add" onClick={() => setShowAddCustomEmbedding(true)}>
-              Add Custom Embedding
-            </Button>
-          )}
+    <div className="flex flex-col">
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>01</b> · Media providers</span>
+          <div className="acts">
+            <div className="seg">
+              {KIND_TABS.map((tab) => (
+                <Link key={tab.id} href={tab.href} className={kind === tab.id ? "on" : ""}>
+                  {tab.label}
+                </Link>
+              ))}
+            </div>
+            {supportsCombo && (
+              <Button size="sm" icon="add" onClick={handleCreateCombo}>Create Combo</Button>
+            )}
+            {isEmbedding && (
+              <Button size="sm" icon="add" onClick={() => setShowAddCustomEmbedding(true)}>
+                Add Custom Embedding
+              </Button>
+            )}
+          </div>
         </div>
-      )}
 
-      {supportsCombo && kindCombos.length > 0 && (
-        <ComboList combos={kindCombos} />
-      )}
+        {supportsCombo && kindCombos.length > 0 && (
+          <div className="p-3"><ComboList combos={kindCombos} /></div>
+        )}
 
-      {allProviders.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-border rounded-xl text-text-muted text-sm">
-          No providers support <strong>{kindConfig.label}</strong> yet.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {providers.map((provider) => (
-            <MediaProviderCard
-              key={provider.id}
-              provider={provider}
-              kind={kind}
-              connections={connections}
-              onToggle={handleToggleProvider}
-            />
-          ))}
-          {customProviders.map((provider) => (
-            <MediaProviderCard
-              key={provider.id}
-              provider={provider}
-              kind={kind}
-              connections={connections}
-              isCustom
-              onToggle={handleToggleProvider}
-            />
-          ))}
-        </div>
-      )}
+        {allProviders.length === 0 ? (
+          <div className="empty">
+            <div className="sub">No providers support <strong>{kindConfig.label}</strong> yet.</div>
+          </div>
+        ) : (
+          <div className="hairline-grid">
+            {providers.map((provider) => (
+              <MediaProviderCard
+                key={provider.id}
+                provider={provider}
+                kind={kind}
+                connections={connections}
+                onToggle={handleToggleProvider}
+              />
+            ))}
+            {customProviders.map((provider) => (
+              <MediaProviderCard
+                key={provider.id}
+                provider={provider}
+                kind={kind}
+                connections={connections}
+                isCustom
+                onToggle={handleToggleProvider}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {isEmbedding && (
         <AddCustomEmbeddingModal

@@ -1,82 +1,168 @@
 # Changelog
 
+All notable changes to Mayday Router are documented here. Format follows
+[Keep a Changelog](https://keepachangelog.com/), versions are pre-1.0 betas.
+
+## 0.30.0-beta (2026-09-30)
+
+### Control Room UI (full redesign)
+- Dashboard re-skinned end-to-end to the "Control Room" design system:
+  mono/condensed typography, hairline panels, LED/tag/bar primitives,
+  full-width layout, numbered sections.
+- New shell: 54px topbar (brand, version chip, operational LED, ⌘K search,
+  icon actions), text tabs with active underline, grouped System menu,
+  simplified status strip.
+- Every dashboard page restructured onto the new primitives; all shared
+  components restyled without behavior changes.
+- Fully responsive: no horizontal overflow down to phone widths; tables
+  scroll inside their panels; mobile-adapted topbar, tabs, and forms.
+
+### Usage: real-time live flow
+- New per-request lifecycle instrumentation: received → routed → streaming →
+  done/error/aborted, with real account names, streamed byte counts,
+  provider-reported token usage, measured durations, and fallback hops.
+- New usage layout: LIVE · Active requests panel (flow tree CLIENT → MAYDAY →
+  provider → model, pausable feed), Requests chart + Top providers side by
+  side, and a Request feed with real `STREAM complete · ms · in/out` and
+  `403 → fallback` log lines.
+
+### Fixes
+- i18n DOM translator no longer reverts dynamically-updated text nodes to
+  their hydration-time values (this blanked live stats after navigation).
+- Basic chat: added the missing dashboard chat route (session-authenticated,
+  machine-trusted internal hop).
+- Basic chat: model requests now always carry the connection's provider
+  prefix — bare/slashed model ids no longer mis-route to providers without
+  credentials.
+- Basic chat: model list loads once per provider instead of once per
+  connection, fixing slow/partial loading on large fleets.
+- Basic chat follows the dashboard theme and fills the content width.
+- Design mockups are served correctly again from the app bundle.
+- Asset scanning scoped to the source tree so vendored/binary folders no
+  longer break dev builds.
+- Status strip renders only from real APIs; placeholder cells removed.
+
 ## 0.29.0-beta (2026-09-26)
 
-### Adopsi 9router-extended (subset aman)
-- UI `/dashboard/extended` (Sidebar "Extended"): toggle Skill Router & Session Dedup, Hermes Memory Bridge, Custom Skill Studio.
-- Skill Router TF-IDF (src/skills/tfidf.js + autoRouter.js) — klasifikasi intent user ke skill manifest-driven, threshold per-skill, default OFF.
-- Session Skill Dedup (src/lib/session/cache.js) — inject penuh sekali per sesi, selanjutnya reminder (flag OFF default).
-- Manifest-driven Skills Registry (src/lib/skillsRegistry.js) — CRUD disk `skills/<id>/manifest.json`, TANPA exec (install/update hanya metadata).
-- Hermes Memory Bridge (aman): baca/tulis snapshot `DATA_DIR/hermes-bridge/`, read-only dari Hermes, default OFF. Tidak menyentuh `~/.hermes/memories/`.
-- API: `/api/skills` (GET/POST/DELETE), `/api/hermes/memory` (import/append).
+### Added — Extended features
+- Extended page (System → Extended) with opt-in power features.
+- Skill Router (TF-IDF): classifies user intent and injects the matching
+  skill's instructions; per-skill thresholds; default OFF.
+- Session Skill Dedup: full skill injection once per session, short reminders
+  afterwards; default OFF.
+- Manifest-driven Skills Registry: CRUD skills as on-disk manifests, no shell
+  execution.
+- Custom Skill Studio: author skill manifests from the dashboard.
+- Hermes Memory Bridge: read-only snapshot bridge to `DATA_DIR/hermes-bridge/`.
 
-### Perbaikan build (pre-existing)
-- `stripComboPrefix` di `open-sse/services/combo.js` (port dari vansrouter, prefix `combo:`).
-- `aggregateComboCapabilities` di `open-sse/providers/capabilities.js` (port dari 9router).
-- `clampResponsesCallId` / `coerceResponsesArguments` / `coerceResponsesOutput` di `open-sse/translator/formats/responsesApi.js` (port dari 9router).
-- `src/shared/components/index.js`: `export *` -> named exports (DashboardLayout, AuthLayout).
+## 0.28.0-beta (2026-09-18)
 
-### Tidak diterapkan (skip)
-- Security Gateway (#7), Auto-Suggest Combo (#4c), execAsync install (RCE), dead code (dedup-prompt.js/skillSetHash), Hermes detect/install/process/telegram.
+### Added
+- Proxy pools: outbound proxy management with batch import and bulk
+  activate/deactivate/delete/health-check.
+- One-click relay deploys (Cloudflare Workers / Vercel / Deno).
+- Proxy fitness tracker: automatic quarantine of failing proxies with
+  per-provider filters.
 
-## 0.22.0-beta (2026-09-25)
+### Improved
+- Circuit breaker is now proxy-aware: failures are attributed to the specific
+  proxy bucket instead of the whole provider.
 
-### Fix OpenCode free-tier
-- Port executor opencode dari upstream 9router v0.5.86: session handling (x-opencode-session), per-session quota, request-id derivation.
-- Free tier OpenCode (opencode / MiMo) sekarang bisa digunakan (sebelumnya 403 "free tier can only be used from within OpenCode").
-- Sync registry opencode + helpers (isMuseSparkModel), thinkingLevels, reasoningContentInjector, opencodeFingerprint.
+## 0.27.0-beta (2026-09-10)
 
-### Rebrand
-- VansAI -> Mayday di seluruh UI + i18n + dashboardGuard.
+### Added
+- Media providers: image generation, video, text-to-speech,
+  speech-to-text, embeddings, web search, and web fetch through the same
+  gateway and dashboard.
+- Per-kind provider pages with live example testers.
 
-## 0.21.0-beta (2026-09-25)
-- Rebrand total 9router/vansrouter -> mayday (paths, headers, env, skills, clineAuth).
-- Update channel arahkan ke repo sendiri (GitHub releases).
-- Skills self-hosted + repo private.
+## 0.26.0-beta (2026-09-02)
 
-## 0.23.0-beta (2026-09-25)
+### Added — Token Saver
+- RTK: tool-output compression (60–90% fewer input tokens on git/grep/ls/
+  tree/log output).
+- Headroom: external context-compression proxy integration.
+- Caveman: telegraphic LLM-output compression (Lite / Full / Ultra).
+- Ponytail: lazy-developer prompt compression (Lite / Full / Ultra).
+- Guards: Loop Guard and per-account Semaphore concurrency limiting.
 
-### Update channel fix
-- version/route.js: pakai GitHub /releases (list) dengan semver sort termasuk prerelease (-beta). Sebelumnya /releases/latest tidak pernah mengembalikan rilis beta sehingga update tidak terdeteksi.
-- Update channel sekarang benar-benar berfungsi untuk alur rilis beta Mayday.
+## 0.25.0-beta (2026-08-24)
 
-## 0.24.0-beta (2026-09-25)
+### Added
+- CLI Tools manager: one-screen configuration of coding-agent CLIs with
+  live connection status and per-tool detail pages.
+- MITM-based onboarding for providers that require traffic capture.
 
-### Investigasi MiMo Code Free
-- Registry & executor mimo-free sudah terdaftar; model check belum tuntas (perlu verifikasi PROVIDERS.baseUrl & bootstrap upstream). Fix lanjutan di rilis berikut.
+## 0.24.0-beta (2026-08-15)
 
-### Catatan
-- Versi ini untuk uji deteksi update channel (tanpa perubahan fungsional baru).
+### Added
+- Combo strategies: fusion (parallel queries + synthesized answer) alongside
+  fallback and round robin.
+- Capacity adapters: automatically route around models lacking vision, audio,
+  PDF, or video capability when the request needs it.
+- Client presets and per-combo strategy/sticky/timeout settings.
 
-## 0.25.0-beta (2026-09-25)
+## 0.23.0-beta (2026-08-06)
 
-### Update flow Docker-aware
-- Popup update tidak lagi menyarankan "npm i -g mayday" di mode Docker.
-- Install command diganti: bash scripts/deploy-mayday-router.sh (git pull -> docker build -> backup DB -> swap).
-- Endpoint /api/version/shutdown dikunci (409) di mode Docker agar tidak membunuh proses container secara sembrono.
+### Added
+- Usage analytics: requests/tokens/cost charts, cached-token hit rate, and
+  per-model/per-provider/per-account/per-key breakdowns.
+- Quota tracker: per-provider used/limit bars with reset windows.
+- Console log page with live-streaming gateway logs.
 
-## 0.26.0-beta (2026-09-25)
+## 0.22.0-beta (2026-07-28)
 
-### Combo update (port dari 9router v0.5.86)
-- combo.js: audio/video input handling + MIME-based capability detection.
-- combosRepo.js, ComboFormModal.js: sinkron upstream.
-- Baru: src/lib/comboPresets.js (preset Cursor/Claude) + route /api/combos/presets.
+### Added
+- OAuth onboarding for coding-agent providers — no manual token handling.
+- Free-tier provider support, including providers usable without any key.
 
-## 0.27.0-beta (2026-09-25)
+### Fixed
+- Free-tier sessions now negotiate per-session quotas correctly instead of
+  being rejected upstream.
 
-### Combo halaman & route (port dari 9router v0.5.86)
-- PORT: api/combos/route.js + [id]/route.js (35-20 baris diff sebelumnya).
-- PORT: dashboard/combos/page.js (692 baris diff — halaman baru full).
-- SYNC: dashboard/media-providers/combo (termasuk [id]).
-- Tampilan combo kini sejajar 9router.
+## 0.21.0-beta (2026-07-20)
 
-## 0.28.0-beta (2026-09-25)
+### Added
+- API keys with per-key ACLs (providers, combos, kinds, models) and machine
+  binding.
+- Remote access wizards: Cloudflare Tunnel and Tailscale.
+- Dashboard login with signed sessions.
 
-### Combo Vision / Capacity Adapter (port 9router v0.5.86)
-- BARU open-sse/services/capacityAdapter.js: pool fallback per-modalitas (vision/pdf/audio/video); combo/solo model non-vision otomatis pindah ke model vision.
-- Wiring chat.js: detectRequiredCapabilities + augmentModelsWithCapacityAdapter + withCapacityAdapterStripping (ACL milik target dipertahankan).
-- settingsRepo: default capacityAdapter vision/audioInput enabled + migrasi legacy mimo.
-- capabilities.js: branch commandcode/cmc default vision:true + COMMANDCODE_TEXT_ONLY.
-- catalogOverride: getCatalogModalities provider-scoped + globalThis.__9rCatalogSource + CATALOG_VERSION=2.
-- modelCatalog/sync.js: writer pairing key `${local}:${id}` (wajib utk reader baru).
-- BARU kimchiModels.js (dormant).
+## 0.20.0-beta (2026-07-10)
+
+### Added
+- Multiple accounts per provider with priorities, per-account round robin,
+  sticky routing, one-by-one health testing, and bulk import.
+- Automatic fallback across accounts and providers on rate limits and errors.
+
+## 0.19.0-beta (2026-07-02)
+
+### Added
+- Dashboard internationalization: 33 languages with automatic text
+  translation.
+- Dark / light / system themes.
+
+## 0.18.0-beta (2026-06-24)
+
+### Added
+- Built-in basic chat client for trying models directly from the dashboard,
+  with streaming and attachments.
+
+## 0.17.0-beta (2026-06-16)
+
+### Added
+- Dual-protocol endpoint: OpenAI-compatible and Anthropic-compatible APIs on
+  one base URL.
+- Model aliasing and per-provider model catalogs.
+
+## 0.16.0-beta (2026-06-08)
+
+### Added
+- First public beta: gateway core, provider registry, dashboard with
+  provider/connection management, and request routing with retries.
+
+## 0.1.0 (2026-05-28)
+
+### Added
+- Initial release: local-first AI request router with a single unified
+  endpoint, SQLite-backed state, and a minimal dashboard.

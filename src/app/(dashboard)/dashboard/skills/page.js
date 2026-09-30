@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, Badge } from "@/shared/components";
+import { Badge } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   SKILLS,
@@ -13,12 +13,8 @@ import {
 function CopyButton({ value, label = "Copy link" }) {
   const { copied, copy } = useCopyToClipboard(2000);
   return (
-    <button type="button"
-      onClick={() => copy(value)}
-      className="px-2 py-1 rounded-md bg-primary text-white text-[11px] font-medium hover:bg-primary/90 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
-      title={value}
-    >
-      <span className="material-symbols-outlined text-[12px]">
+    <button type="button" onClick={() => copy(value)} className="btn" title={value}>
+      <span className="material-symbols-outlined text-[14px]">
         {copied ? "check" : "content_copy"}
       </span>
       {copied ? "Copied!" : label}
@@ -26,55 +22,52 @@ function CopyButton({ value, label = "Copy link" }) {
   );
 }
 
-function SkillRow({ skill }) {
+function SkillCard({ skill }) {
   const url = getSkillRawUrl(skill.id);
   const icon = skill.icon || "extension";
   return (
     <div
-      className={`flex items-start gap-3 p-4 rounded-[14px] border shadow-[var(--shadow-soft)] transition-colors ${
-        skill.isEntry
-          ? "border-brand-500/40 bg-brand-500/5"
-          : "border-border-subtle bg-surface hover:bg-surface-2"
-      }`}
+      className="pcard"
+      style={skill.isEntry ? { background: "var(--cr-accent-dim)" } : undefined}
     >
-      <div
-        className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${
-          skill.isEntry ? "bg-primary text-white" : "bg-primary/10 text-primary"
-        }`}
-      >
-        <span className="material-symbols-outlined text-[18px]">{icon}</span>
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="font-semibold text-sm text-text-main">{skill.name}</h3>
-          {skill.isEntry && (
-            <Badge variant="primary" size="sm">START HERE</Badge>
-          )}
-          {skill.source === "custom" && (
-            <Badge variant="default" size="sm">CUSTOM</Badge>
-          )}
-          {skill.endpoint && (
-            <Badge variant="default" size="sm">
-              <code className="text-[10px]">{skill.endpoint}</code>
-            </Badge>
+      <div className="top">
+        <div
+          className="plogo"
+          style={{ background: skill.isEntry ? "var(--color-primary)" : "#475569" }}
+        >
+          <span className="material-symbols-outlined text-[16px]">{icon}</span>
+        </div>
+        <div className="min-w-0">
+          <div className="nm">{skill.name}</div>
+          <div className="sid">{skill.description}</div>
+          {skill.id && (
+            <a
+              href={getSkillBlobUrl(skill.id)}
+              target="_blank"
+              rel="noreferrer"
+              className="sid"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {url}
+              </span>
+              <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+            </a>
           )}
         </div>
-        <p className="text-xs text-text-muted mt-0.5">{skill.description}</p>
-        {skill.id && (
-          <a
-            href={getSkillBlobUrl(skill.id)}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[11px] text-text-muted hover:text-primary mt-1 inline-flex items-center gap-1 break-all"
-          >
-            {url}
-            <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-          </a>
+      </div>
+      <div className="ct">
+        {skill.isEntry && <Badge variant="primary" size="sm">START HERE</Badge>}
+        {skill.source === "custom" && <Badge variant="default" size="sm">CUSTOM</Badge>}
+        {skill.endpoint && (
+          <Badge variant="default" size="sm">
+            <code className="text-[10px]">{skill.endpoint}</code>
+          </Badge>
         )}
       </div>
-
-      <CopyButton value={url} />
+      <div className="foot">
+        <CopyButton value={url} />
+      </div>
     </div>
   );
 }
@@ -95,42 +88,52 @@ export default function SkillsPage() {
     .map((s) => ({ id: s.id, name: s.name, description: s.description || "", source: "custom", icon: "extension" }));
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <Card padding="md">
-        <div className="text-xs text-text-muted mb-2">Paste this to your AI:</div>
-        <div className="px-3 py-2 rounded bg-surface-2 font-mono text-[12px] text-text-main">
-          Read this skill and use it: {getSkillRawUrl("mayday")}
+    <div className="flex w-full flex-col gap-4">
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>01</b> · Agent Skills</span>
+          <div className="acts">
+            <span className="tag g">SERVED AT /SKILLS/*</span>
+          </div>
         </div>
-      </Card>
-
-      <div className="space-y-2">
-        {SKILLS.map((skill) => (
-          <SkillRow key={skill.id} skill={skill} />
-        ))}
-        {extraSkills.map((skill) => (
-          <SkillRow key={skill.id} skill={skill} />
-        ))}
+        <div className="banner">
+          <span>▦</span>
+          <div>
+            <div>Paste this to your AI:</div>
+            <div style={{ fontFamily: "var(--font-jetbrains, monospace)", wordBreak: "break-all" }}>
+              Read this skill and use it: {getSkillRawUrl("mayday")}
+            </div>
+          </div>
+        </div>
+        <div className="cards">
+          {SKILLS.map((skill) => (
+            <SkillCard key={skill.id} skill={skill} />
+          ))}
+          {extraSkills.map((skill) => (
+            <SkillCard key={skill.id} skill={skill} />
+          ))}
+        </div>
       </div>
 
-      <Card padding="md">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="text-sm font-semibold text-text-main">More on GitHub</h2>
-            <p className="text-xs text-text-muted mt-0.5">
-              Browse source, README, and examples.
-            </p>
+      <div className="panel">
+        <div className="panel-head">
+          <span className="t"><b>02</b> · More on GitHub</span>
+          <div className="acts">
+            <a
+              href={`${SKILLS_REPO_URL}/tree/master/skills`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn"
+            >
+              View on GitHub
+              <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+            </a>
           </div>
-          <a
-            href={`${SKILLS_REPO_URL}/tree/master/skills`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-            View on GitHub
-          </a>
         </div>
-      </Card>
+        <p className="dim" style={{ padding: "0 14px 12px" }}>
+          Browse source, README, and examples.
+        </p>
+      </div>
     </div>
   );
 }
