@@ -3,6 +3,21 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), versions are pre-1.0 betas.
 
+## 0.31.0-beta (2026-09-30)
+
+### Added — Docker self-update (path A)
+- One-click dashboard updates for Docker installs: the running container
+  drives its own replacement through the Docker API — pulls the new image,
+  recreates itself with the captured configuration (env, mounts, ports,
+  networks, restart policy), health-checks the replacement, then removes the
+  old container. No rebuild or terminal access needed.
+- Opt-in via `ENABLE_DOCKER_SELF_UPDATE=true` + mounting
+  `/var/run/docker.sock` (documented; the socket is root-equivalent).
+- Registry-first image pull with a local-image fallback, so self-update also
+  works with images built on the host.
+- The update modal now picks the strategy automatically by install mode
+  (tarball / docker / npm) and reports per-stage progress.
+
 ## 0.30.0-beta (2026-09-30)
 
 ### Control Room UI (full redesign)

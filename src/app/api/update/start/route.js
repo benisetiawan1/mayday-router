@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { startTarballUpdate, fetchLatestTarballRelease, getUpdateState } from "@/lib/selfUpdate";
+import { startDockerSelfUpdate, dockerSelfUpdateAvailable } from "@/lib/dockerSelfUpdate";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,15 @@ export async function POST() {
   }
   const state = getUpdateState();
   if (state.installMode === "docker") {
+    if (dockerSelfUpdateAvailable()) {
+      const release = await fetchLatestTarballRelease().catch(() => null); // reuse release channel for the target version label
+      startDockerSelfUpdate(release?.version || null).catch((e) => {
+        console.error("[docker-self-update] failed:", e?.message || e);
+      });
+      return NextResponse.json({ success: true, targetVersion: release?.version || null });
+    }
     return NextResponse.json(
-      { success: false, message: "Docker install — pull the new image instead" },
+      { success: false, message: "Docker install — enable self-update (ENABLE_DOCKER_SELF_UPDATE=true + mount /var/run/docker.sock) or pull the new image manually" },
       { status: 400 }
     );
   }
