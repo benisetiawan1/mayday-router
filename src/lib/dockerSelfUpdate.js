@@ -79,7 +79,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function buildManualDockerCommand() {
   const id = selfContainerId();
   const inspect = await dockerApi("GET", `/containers/${id}/json`);
-  if (inspect.status !== 200) return null;
+  if (inspect.status !== 200) {
+    // no docker socket: build from what the process knows (port + optional name)
+    const port = process.env.PORT || "20128";
+    const name = process.env.MAYDAY_CONTAINER_NAME || "<container-name>";
+    return [
+      `docker build -t ${IMAGE} .   # or: docker pull ${IMAGE}`,
+      `docker stop ${name} && docker rm ${name}`,
+      `docker run -d --name ${name} --restart always -p ${port}:${port} -v <your-data-dir>:/app/data ${IMAGE}`,
+      `# note: adjust <container-name> and <your-data-dir> to how you installed`,
+    ].join(" && \n  ");
+  }
   const cfg = inspect.body;
   const name = (cfg.Name || SELF_NAME).replace(/^\//, "");
   const parts = [`docker stop ${name}`, `docker rm ${name}`];
