@@ -68,6 +68,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       process.exit(1);
     }
     console.log(`[apply-update] ${TARGET} replaced successfully`);
+
+    // Auto-prune: remove the image the OLD container ran on, but only when it
+    // is untagged — tagged images (v31, v32, …) stay as rollback options.
+    const oldImage = process.env.APPLY_OLD_IMAGE;
+    if (oldImage) {
+      try {
+        const info = await api("GET", `/images/${encodeURIComponent(oldImage)}/json`);
+        const tags = info.body?.RepoTags || [];
+        const tagged = tags.some((t) => t && !t.endsWith(":<none>"));
+        if (info.status === 200 && !tagged) {
+          await api("DELETE", `/images/${encodeURIComponent(oldImage)}?force=true`);
+          console.log(`[apply-update] pruned old image ${String(oldImage).slice(0, 19)} (untagged)`);
+        } else {
+          console.log(`[apply-update] kept old image (tagged rollback): ${tags.join(",")}`);
+        }
+      } catch (e) {
+        console.log("[apply-update] image prune skipped:", e && e.message ? e.message : e);
+      }
+    }
     process.exit(0);
   } catch (e) {
     console.error("[apply-update] failed:", e && e.message ? e.message : e);

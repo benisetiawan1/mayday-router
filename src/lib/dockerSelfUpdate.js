@@ -179,6 +179,7 @@ export async function startDockerSelfUpdate(targetVersion) {
         `APPLY_TARGET=${SELF_NAME}`,
         `APPLY_IMAGE=${IMAGE}`,
         `APPLY_CONFIG_JSON=${JSON.stringify(applyConfig)}`,
+        `APPLY_OLD_IMAGE=${cfg.Image}`, // image the old container ran on → pruned if untagged
       ],
       Labels: { "mayday.update-helper": "true" },
       HostConfig: {
