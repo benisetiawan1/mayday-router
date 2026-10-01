@@ -52,6 +52,16 @@ export default function UpdateModal({ isOpen, onClose, latestVersion }) {
         const res = await fetch("/api/health", { cache: "no-store" });
         if (res.ok) {
           clearInterval(polling.current);
+          // verify the version actually changed before declaring success —
+          // a swap onto an unchanged bundle/image must not look like an update
+          try {
+            const v = await (await fetch("/api/version", { cache: "no-store" })).json();
+            if (latestVersion && v.currentVersion && v.currentVersion !== latestVersion) {
+              setPhase("error");
+              setError(`Restarted, but still on v${v.currentVersion} — the v${latestVersion} bundle/image was not available to install. Build or pull it first, then retry.`);
+              return;
+            }
+          } catch { /* version probe failed — fall through to done */ }
           setPhase("done");
           setMessage("Update complete — reloading…");
           setTimeout(() => globalThis.location.reload(), 800);

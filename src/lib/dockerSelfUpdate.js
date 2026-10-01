@@ -179,6 +179,12 @@ export async function startDockerSelfUpdate(targetVersion) {
     } catch (e) {
       const local = await dockerApi("GET", `/images/${encodeURIComponent(IMAGE)}/json`);
       if (local.status !== 200) throw e; // no registry AND no local image — real failure
+      // guard: never "update" onto the very image the container already runs
+      const runningImageId = cfg.Image;
+      const localId = local.body?.Id;
+      if (runningImageId && localId && (localId === runningImageId || localId.endsWith(runningImageId) || runningImageId.endsWith(localId.replace(/^sha256:/, "")))) {
+        throw new Error(`The ${IMAGE} image is the same one already running — build/pull the new version's image first`);
+      }
       setState({ progress: 70, message: "Using locally built image (registry unavailable)" });
     }
 
