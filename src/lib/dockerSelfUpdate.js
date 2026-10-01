@@ -14,7 +14,22 @@ import pkg from "../../package.json" with { type: "json" };
 
 const SOCK = "/var/run/docker.sock";
 const SELF_NAME = process.env.MAYDAY_CONTAINER_NAME || "mayday-router";
-const IMAGE = process.env.MAYDAY_IMAGE || "mayday-router:latest";
+
+// Target image is derived from the RUNNING container's own image reference —
+// never hardcoded — so any repo/tag/registry works (mayday-router:v32,
+// ghcr.io/user/app:latest, localhost:5000/app:v1, …). The tag moves to
+// "latest" (or MAYDAY_IMAGE_TAG); MAYDAY_IMAGE env overrides everything.
+function resolveTargetImage(cfgImage) {
+  if (process.env.MAYDAY_IMAGE) return process.env.MAYDAY_IMAGE;
+  const tag = process.env.MAYDAY_IMAGE_TAG || "latest";
+  const ref = String(cfgImage || "");
+  // untagged image id (container created from a bare sha) → no name to derive
+  if (!ref || /^[0-9a-f]{12,64}$/i.test(ref)) return `mayday-router:${tag}`;
+  const slash = ref.lastIndexOf("/");
+  const colon = ref.lastIndexOf(":");
+  const repo = colon > slash ? ref.slice(0, colon) : ref; // handles registry:port too
+  return `${repo}:${tag}`;
+}
 
 export function dockerSelfUpdateAvailable() {
   if (process.env.ENABLE_DOCKER_SELF_UPDATE !== "true") return false;
@@ -86,6 +101,7 @@ export async function buildManualDockerCommand() {
   }
   if (inspect.status !== 200) {
     // no docker socket: build from what the process knows (port + optional name)
+    const IMAGE = resolveTargetImage(null);
     const port = process.env.PORT || "20128";
     const name = process.env.MAYDAY_CONTAINER_NAME || "<container-name>";
     return [
@@ -96,6 +112,7 @@ export async function buildManualDockerCommand() {
     ].join(" && \n  ");
   }
   const cfg = inspect.body;
+  const IMAGE = resolveTargetImage(cfg.Config?.Image);
   const name = (cfg.Name || SELF_NAME).replace(/^\//, "");
   const parts = [`docker stop ${name}`, `docker rm ${name}`];
   let run = `docker run -d --name ${name}`;
@@ -134,13 +151,19 @@ export async function startDockerSelfUpdate(targetVersion) {
   }
 
   const id = selfContainerId();
-  setState({ phase: "pulling", progress: 5, message: `Pulling new image (${IMAGE})…`, targetVersion: targetVersion || null, error: null, startedAt: Date.now() });
+  setState({ phase: "pulling", progress: 5, message: "Resolving update image…", targetVersion: targetVersion || null, error: null, startedAt: Date.now() });
 
   try {
     // 1 · read own config (this exact container gets recreated on the new image)
     const inspect = await dockerApi("GET", `/containers/${id}/json`);
     if (inspect.status !== 200) throw new Error("Cannot inspect own container");
     const cfg = inspect.body;
+
+    // The image to update TO is derived from the container's own image
+    // reference — same repo, tag from MAYDAY_IMAGE_TAG/"latest" — so installs
+    // with any name/registry work.
+    const IMAGE = resolveTargetImage(cfg.Config?.Image);
+    setState({ message: `Pulling new image (${IMAGE})…` });
 
     // 2 · pull the new image — registry-first, with a local fallback so
     // self-update also works for images built on this host without a registry
