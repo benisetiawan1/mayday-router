@@ -3,6 +3,18 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), versions are pre-1.0 betas.
 
+## 0.33.0-beta (2026-10-01)
+
+### Fixed — dashboard self-update
+- Docker self-update now performs the swap in a throwaway helper container:
+  the old container cannot stop itself mid-update (the replacement needs its
+  port), which previously left the instance in a failed state.
+- The container entrypoint keeps the docker socket's group when dropping to
+  the unprivileged user, so the self-updater can actually reach the socket.
+- The manual update command shown in the dialog is generated from the running
+  install's real configuration (no hardcoded name/port), with a parameterized
+  fallback when the docker socket isn't mounted.
+
 ## 0.32.0-beta (2026-09-30)
 
 ### Fixed — mobile UI
