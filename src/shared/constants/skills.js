@@ -5,9 +5,21 @@
 const SKILL_PATH = "skills";
 
 export const SKILLS_REPO_URL = `https://github.com/benisetiawan1/mayday-router`;
-const SKILLS_BASE = typeof window !== "undefined"
-  ? `${window.location.origin}/${SKILL_PATH}`
-  : `/skills`;
+
+// origin must be passed in by the caller (the dashboard page reads it from
+// window.location AFTER mount). Never read window at module scope here — the
+// SSR render and the client hydration must produce identical markup.
+function base(origin) {
+  return origin ? `${origin}/${SKILL_PATH}` : `/${SKILL_PATH}`;
+}
+
+export function getSkillRawUrl(id, origin) {
+  return `${base(origin)}/${id}/SKILL.md`;
+}
+
+export function getSkillBlobUrl(id, origin) {
+  return `${base(origin)}/${id}/SKILL.md`;
+}
 
 export const SKILLS = [
   {
@@ -75,11 +87,3 @@ export const SKILLS = [
       icon: "language",
     },
   ];
-
-  export function getSkillRawUrl(id) {
-    return `${SKILLS_BASE}/${id}/SKILL.md`;
-  }
-
-  export function getSkillBlobUrl(id) {
-    return `${SKILLS_BASE}/${id}/SKILL.md`;
-  }

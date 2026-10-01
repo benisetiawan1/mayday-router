@@ -22,8 +22,8 @@ function CopyButton({ value, label = "Copy link" }) {
   );
 }
 
-function SkillCard({ skill }) {
-  const url = getSkillRawUrl(skill.id);
+function SkillCard({ skill, origin }) {
+  const url = getSkillRawUrl(skill.id, origin);
   const icon = skill.icon || "extension";
   return (
     <div
@@ -42,7 +42,7 @@ function SkillCard({ skill }) {
           <div className="sid">{skill.description}</div>
           {skill.id && (
             <a
-              href={getSkillBlobUrl(skill.id)}
+              href={getSkillBlobUrl(skill.id, origin)}
               target="_blank"
               rel="noreferrer"
               className="sid"
@@ -74,6 +74,16 @@ function SkillCard({ skill }) {
 
 export default function SkillsPage() {
   const [customSkills, setCustomSkills] = useState([]);
+  // origin is known only on the client, after mount — SSR and hydration render
+  // the relative path, then it upgrades to the absolute URL (no mismatch)
+  const [origin, setOrigin] = useState(null);
+  useEffect(() => {
+    // deferred to a frame callback: reading window after mount without a
+    // synchronous setState-in-effect (lint rule) while keeping SSR/hydration
+    // markup identical (both start with the relative path)
+    const t = requestAnimationFrame(() => setOrigin(window.location.origin));
+    return () => cancelAnimationFrame(t);
+  }, []);
 
   useEffect(() => {
     fetch("/api/skills", { credentials: "include" })
@@ -101,16 +111,16 @@ export default function SkillsPage() {
           <div>
             <div>Paste this to your AI:</div>
             <div style={{ fontFamily: "var(--font-jetbrains, monospace)", wordBreak: "break-all" }}>
-              Read this skill and use it: {getSkillRawUrl("mayday")}
+              Read this skill and use it: {getSkillRawUrl("mayday", origin)}
             </div>
           </div>
         </div>
         <div className="cards">
           {SKILLS.map((skill) => (
-            <SkillCard key={skill.id} skill={skill} />
+            <SkillCard key={skill.id} skill={skill} origin={origin} />
           ))}
           {extraSkills.map((skill) => (
-            <SkillCard key={skill.id} skill={skill} />
+            <SkillCard key={skill.id} skill={skill} origin={origin} />
           ))}
         </div>
       </div>

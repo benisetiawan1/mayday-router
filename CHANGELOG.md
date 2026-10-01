@@ -3,6 +3,21 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.1-base (2026-10-01)
+
+### Fixed
+- Update pill now appears without a manual page refresh (the version check
+  re-runs every 5 minutes and whenever the window regains focus).
+- Update dialog: tarball one-click now falls back to the manual flow when the
+  release carries no downloadable bundle, instead of failing mid-update.
+- Skills page: fixed a React hydration mismatch (the skill URL differed
+  between server render and client hydration); the absolute URL now appears
+  cleanly after mount.
+
+### Added
+- Status strip: the "Fallback events /24h" cell is back, now fed by real
+  fallback hops recorded by the request router.
+
 ## 1.2.0-base (2026-10-01)
 
 First **base release** — the Control Room UI, real-time usage live flow, and

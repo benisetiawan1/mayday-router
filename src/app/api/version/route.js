@@ -53,7 +53,13 @@ function fetchLatestVersion() {
               .filter((t) => parseVersion(t));
             if (tags.length === 0) return resolve(null);
             tags.sort((x, y) => compareVersions(y, x));
-            resolve(tags[0] || null);
+            const topTag = tags[0];
+            // does the newest release carry a downloadable tarball asset?
+            const topRelease = arr.find((r) => String(r.tag_name || "").replace(/^v/i, "") === topTag);
+            const hasTarballAsset = !!((topRelease && topRelease.assets) || []).some(
+              (a) => /linux-x64\.tar\.gz$/.test(a.name || "") && !String(a.name).endsWith(".sha256")
+            );
+            resolve({ version: topTag, hasTarballAsset });
           } catch {
             resolve(null);
           }
@@ -78,9 +84,10 @@ async function getLatestVersionCached() {
 }
 
 export async function GET() {
-  const latestVersion = await getLatestVersionCached();
+  const latest = await getLatestVersionCached();
+  const latestVersion = latest?.version || null;
   const currentVersion = pkg.version;
   const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false;
 
-  return Response.json({ currentVersion, latestVersion, hasUpdate });
+  return Response.json({ currentVersion, latestVersion, hasUpdate, hasTarballAsset: latest?.hasTarballAsset ?? false });
 }

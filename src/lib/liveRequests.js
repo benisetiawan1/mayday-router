@@ -16,6 +16,12 @@ if (!global._liveRequests) {
 }
 const live = global._liveRequests;
 
+// rolling 24h log of real fallback hops (process-lifetime, in-memory)
+if (!global._fallbackLog) {
+  global._fallbackLog = [];
+}
+const fallbackLog = global._fallbackLog;
+
 // Real event feed (v2.1-style log lines): completed requests with their true
 // duration + tokens, and fallback hops. No synthetic entries ever.
 const FEED_CAP = 40;
@@ -119,6 +125,7 @@ export function liveProgress(id, { chunks, bytes, tokensOut }) {
 export function liveFallback(id, { fromAccount, status }) {
   const r = live.get(id);
   if (!r) return;
+  fallbackLog.push(Date.now());
   r.fallbackFrom = { account: fromAccount || null, status: status || null };
   r.phase = "received"; // back to received while the router picks another account
   r.account = null;
@@ -150,6 +157,12 @@ export function liveEnd(id, { status = "ok", tokensIn = 0, tokensOut = 0 } = {})
 
 export function getLiveFeed() {
   return feed.slice(0, FEED_CAP);
+}
+
+export function getFallbackEvents24h() {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  while (fallbackLog.length && fallbackLog[0] < cutoff) fallbackLog.shift();
+  return fallbackLog.length;
 }
 
 export function getLiveRequests() {

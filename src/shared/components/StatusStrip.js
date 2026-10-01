@@ -42,7 +42,7 @@ export default function StatusStrip() {
         fetch("/api/health"),
       ]);
 
-      const next = { connections: null, providers: null, keys: null, requests: null, health: null };
+      const next = { connections: null, providers: null, keys: null, requests: null, fallback24h: null, health: null };
 
       if (provRes.status === "fulfilled" && provRes.value.ok) {
         const d = await provRes.value.json();
@@ -57,6 +57,7 @@ export default function StatusStrip() {
       if (usageRes.status === "fulfilled" && usageRes.value.ok) {
         const d = await usageRes.value.json();
         next.requests = d.stats?.totalRequests ?? d.totalRequests ?? null;
+        next.fallback24h = typeof d.fallback24h === "number" ? d.fallback24h : null;
       }
       if (healthRes.status === "fulfilled") {
         next.health = healthRes.value.ok;
@@ -70,12 +71,9 @@ export default function StatusStrip() {
     };
   }, []);
 
-  // Mockup v3 order: connections · api keys · total requests · gateway health.
-  // "Fallback events" cell from the mockup is omitted — usageDb has no fallback/403
-  // persistence, and the plan forbids dummy data. Add the cell back when a real
-  // fallback counter exists.
+  // Mockup v3 order: connections · api keys · total requests · fallback events · gateway health.
   return (
-    <div data-i18n-skip className="flex-none grid grid-cols-2 sm:grid-cols-4 border-b border-border bg-surface">
+    <div className="flex-none grid grid-cols-2 sm:grid-cols-5 border-b border-border bg-surface">
       <Cell
         label="Provider connections"
         value={fmt(stats.connections)}
@@ -84,6 +82,11 @@ export default function StatusStrip() {
       />
       <Cell label="API keys" value={fmt(stats.keys)} sub="active access keys" />
       <Cell label="Total requests" value={fmt(stats.requests)} sub="lifetime" />
+      <Cell
+        label="Fallback events"
+        value={fmt(stats.fallback24h)}
+        sub="last 24h · key 403 → auto-fallback"
+      />
       <Cell
         label="Gateway health"
         value={stats.health === true ? "OK" : stats.health === false ? "DOWN" : "—"}

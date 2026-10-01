@@ -73,10 +73,20 @@ export default function Sidebar({ onClose }) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/version")
-      .then((res) => res.json())
-      .then((data) => { if (data.hasUpdate) setUpdateInfo(data); })
-      .catch(() => {});
+    let stop = false;
+    const check = () => {
+      fetch("/api/version")
+        .then((res) => res.json())
+        .then((data) => { if (!stop && data.hasUpdate) setUpdateInfo(data); })
+        .catch(() => {});
+    };
+    check();
+    // re-check periodically + when the window regains focus, so the update
+    // pill appears without a manual page refresh
+    const t = setInterval(check, 5 * 60 * 1000);
+    const onFocus = () => check();
+    window.addEventListener("focus", onFocus);
+    return () => { stop = true; clearInterval(t); window.removeEventListener("focus", onFocus); };
   }, []);
 
   useEffect(() => {
@@ -162,7 +172,13 @@ export default function Sidebar({ onClose }) {
                   try {
                     const res = await fetch("/api/update/status", { cache: "no-store" });
                     const s = await res.json();
-                    if (s.installMode === "tarball" || (s.installMode === "docker" && s.selfUpdate)) {
+                    // tarball one-click needs the release to actually carry the bundle
+                    const tarballReady = updateInfo?.hasTarballAsset !== false;
+                    if (s.installMode === "docker" && s.selfUpdate) {
+                      setShowUpdateNowModal(true);
+                      return;
+                    }
+                    if (s.installMode === "tarball" && tarballReady) {
                       setShowUpdateNowModal(true);
                       return;
                     }
