@@ -855,6 +855,22 @@ button:disabled,
 .usage-grid > .panel { min-width: 0; }
 @media (max-width: 1020px) { .usage-grid { grid-template-columns: minmax(0, 1fr); } }
 
+/* update modal stage tracker */
+.upd-stages { display: flex; flex-direction: column; gap: 8px; }
+.upd-stage { display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: .04em; }
+.upd-stage.pending { color: var(--color-text-subtle); }
+.upd-stage.active { color: var(--color-text-main); font-weight: 600; }
+.upd-stage.done { color: var(--color-text-muted); }
+.upd-stage .led { flex: none; }
+.upd-stage.pending .led { background: var(--color-surface-2); box-shadow: none; }
+.upd-stage-label { flex: 1; }
+.upd-check { color: var(--color-success); font-weight: 700; }
+.upd-dots { display: inline-flex; gap: 3px; }
+.upd-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--color-primary); animation: updDot 1s ease-in-out infinite; }
+.upd-dots i:nth-child(2) { animation-delay: .15s; }
+.upd-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes updDot { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+
 /* request feed log lines (v2.1) */
 .fline { display: flex; align-items: baseline; gap: 8px; padding: 7px 16px; border-bottom: 1px solid var(--color-border-subtle); font-size: 11.5px; animation: crFadeUp .2s ease-out; }
 .fline:last-child { border-bottom: 0; }

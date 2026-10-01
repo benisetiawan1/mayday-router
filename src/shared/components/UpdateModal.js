@@ -6,8 +6,22 @@ import Button from "./Button";
 
 // One-click dashboard update (tarball path). Polls /api/update/status while the
 // server downloads/verifies/installs, then waits for the restart and reloads.
+// stage tracker — driven by the real server phase, no synthetic animation
+const STAGES = [
+  { label: "Downloading update", keys: ["downloading", "pulling"] },
+  { label: "Verifying package", keys: ["verifying"] },
+  { label: "Installing", keys: ["installing", "recreating"] },
+  { label: "Restarting server", keys: ["restarting"] },
+  { label: "Done", keys: ["done"] },
+];
+function stageIndex(phase) {
+  const i = STAGES.findIndex((s) => s.keys.includes(phase));
+  return i === -1 ? 0 : i;
+}
+
 export default function UpdateModal({ isOpen, onClose, latestVersion }) {
   const [phase, setPhase] = useState("confirm"); // confirm | running | restarting | done | error
+  const [serverPhase, setServerPhase] = useState("");
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(null);
@@ -30,6 +44,7 @@ export default function UpdateModal({ isOpen, onClose, latestVersion }) {
 
   const waitForRestart = () => {
     setPhase("restarting");
+    setServerPhase("restarting");
     setMessage("Restarting — the dashboard will reload automatically…");
     if (polling.current) clearInterval(polling.current);
     polling.current = setInterval(async () => {
@@ -62,9 +77,18 @@ export default function UpdateModal({ isOpen, onClose, latestVersion }) {
         const res = await fetch("/api/update/status", { cache: "no-store" });
         if (!res.ok) return;
         const s = await res.json();
+        setServerPhase(s.phase || "");
         setProgress(s.progress || 0);
         setMessage(s.message || "");
-        if (s.phase === "error") {
+        // completion: the replacement container answers with the target version
+        // (fresh idle state) — the swap is fast, so don't rely on catching a
+        // "restarting" phase or a dropped connection
+        if (latestVersion && s.currentVersion === latestVersion && (s.phase === "idle" || s.phase === "done")) {
+          clearInterval(polling.current);
+          setPhase("done");
+          setMessage("Update complete — reloading…");
+          setTimeout(() => globalThis.location.reload(), 800);
+        } else if (s.phase === "error") {
           clearInterval(polling.current);
           setPhase("error");
           setError(s.error || "Update failed");
@@ -94,13 +118,24 @@ export default function UpdateModal({ isOpen, onClose, latestVersion }) {
       )}
       {(phase === "running" || phase === "restarting") && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <span className="led ok pulse" />
-            <p className="text-sm text-text-main">{message || "Working…"}</p>
+          <div className="upd-stages">
+            {STAGES.map((st, i) => {
+              const current = stageIndex(serverPhase);
+              const state = i < current ? "done" : i === current ? "active" : "pending";
+              return (
+                <div key={st.label} className={`upd-stage ${state}`}>
+                  <span className={`led ${state === "done" ? "ok" : state === "active" ? "warn pulse" : ""}`} />
+                  <span className="upd-stage-label">{st.label}</span>
+                  {state === "done" && <span className="upd-check">✓</span>}
+                  {state === "active" && <span className="upd-dots"><i /><i /><i /></span>}
+                </div>
+              );
+            })}
           </div>
-          <div className="crbar"><i style={{ width: `${progress}%` }} />
-          </div>
-          <p className="text-[10px] uppercase tracking-[0.14em] text-text-subtle">Do not close this tab</p>
+          {(serverPhase === "downloading" || serverPhase === "pulling") && (
+            <div className="crbar"><i style={{ width: `${progress}%` }} /></div>
+          )}
+          <p className="text-[10px] uppercase tracking-[0.14em] text-text-subtle">{message || "Working…"} — do not close this tab</p>
         </div>
       )}
       {phase === "done" && (
