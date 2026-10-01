@@ -1,7 +1,40 @@
 # Changelog
 
 All notable changes to Mayday Router are documented here. Format follows
-[Keep a Changelog](https://keepachangelog.com/), versions are pre-1.0 betas.
+[Keep a Changelog](https://keepachangelog.com/).
+
+## 1.2.0-base (2026-10-01)
+
+First **base release** — the Control Room UI, real-time usage live flow, and
+the dashboard self-updater together mark the project's first stable baseline.
+
+### Added — Update from the dashboard
+- One-click updates from the topbar, for every install type:
+  - **Tarball/direct installs** — downloads the release bundle, verifies
+    SHA-256, swaps the app directory, and restarts itself. No rebuild, no
+    terminal.
+  - **Docker installs** (opt-in: `ENABLE_DOCKER_SELF_UPDATE=true` +
+    `/var/run/docker.sock` mount) — the container drives its own replacement
+    via the Docker API through a throwaway helper container, keeping its exact
+    configuration (env, mounts, ports, networks, restart policy).
+  - **npm/CLI installs** — the existing updater path.
+- The update dialog shows a real per-stage progress tracker (download →
+  verify → install → restart) driven by live server state, reconnects
+  automatically, and confirms the new version before reloading.
+- Safety: checksum verification before anything is touched, previous app
+  directory kept for rollback (tarball path), old container removed only
+  after the replacement is healthy (docker path), and the previous docker
+  image is auto-pruned when untagged (tagged images stay as rollback).
+- The manual install command shown to Docker users is generated from the
+  running install's real configuration — no hardcoded names or ports.
+- Release tarballs (`mayday-router-<version>-linux-x64.tar.gz` + `.sha256`)
+  are attached to every GitHub release.
+
+### Fixed
+- Docker self-update no longer deadlocks on the port held by the running
+  container (helper-container swap) and no longer fails on socket permissions
+  when the entrypoint drops privileges.
+- The update dialog now detects completion instead of sitting on "working".
 
 ## 0.33.0-beta (2026-10-01)
 

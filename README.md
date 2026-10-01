@@ -91,6 +91,7 @@ More: [combos](docs/screenshots/combos.png) ·
 - **CLI Tools** — one-screen configuration of 15+ coding-agent CLIs
   (Claude Code, Codex, OpenCode, Kilo Code, Cline, Cursor, and more) to talk
   to your local gateway.
+- **One-click updates from the dashboard** — see [Updating](#updating).
 - **MITM helpers** — capture-based onboarding for providers that require it.
 - **Local-first** — all state in a single SQLite directory; backup/restore
   from the UI; 33 UI languages; dark/light/system themes; responsive down to
@@ -133,6 +134,25 @@ npm start          # on :20128
 ```
 
 ---
+
+## Updating
+
+Mayday Router updates itself from the dashboard — no rebuild, no terminal.
+When a new release is out, an `↑ v…` pill appears in the topbar. Click it,
+press **Update now**, and watch the per-stage progress (download → verify →
+install → restart); the dashboard reconnects itself when done.
+
+- **Tarball / direct installs** — the server downloads the release bundle,
+  verifies its SHA-256, swaps the app directory, and restarts. The previous
+  app directory is kept for rollback.
+- **Docker installs** — one-click too, after a one-time opt-in at container
+  creation: `-e ENABLE_DOCKER_SELF_UPDATE=true` and
+  `-v /var/run/docker.sock:/var/run/docker.sock` (the socket is
+  root-equivalent on the host — enable only if you accept that). The container
+  then replaces itself via the Docker API, preserving your exact configuration
+  and auto-pruning the old image (tagged images stay as rollback).
+- Without the opt-in, the dialog shows a manual command generated from your
+  install's real name/ports — not a hardcoded one.
 
 ## Configuration
 
