@@ -4,6 +4,14 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
+// One-shot self-update helper mode: when created as a throwaway helper
+// container by the dashboard self-updater, run the swap and exit instead of
+// starting the server.
+if (process.argv.includes("--apply-update")) {
+  require("./docker-update-apply.cjs");
+  return;
+}
+
 const origCreate = http.createServer.bind(http);
 
 // Per-process secret proving x-9r-real-ip was stamped below rather than sent by the client.

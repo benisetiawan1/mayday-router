@@ -159,36 +159,43 @@ export async function startDockerSelfUpdate(targetVersion) {
       setState({ progress: 70, message: "Using locally built image (registry unavailable)" });
     }
 
-    // 3 · rename self aside, create + start the replacement
+    // 3 · hand the swap to a throwaway helper container. A container cannot
+    // stop itself mid-swap (the replacement needs the port the old one holds),
+    // so the helper does: stop+remove old → create+start new → exit.
     setState({ phase: "recreating", message: "Recreating container…" });
-    const rename = await dockerApi("POST", `/containers/${id}/rename?name=${encodeURIComponent(SELF_NAME + "-old")}`);
-    if (rename.status !== 204 && rename.status !== 200) throw new Error("Failed to rename current container");
-
-    const createBody = {
-      Image: IMAGE,
+    const applyConfig = {
       Env: cfg.Config.Env,
       Labels: { ...(cfg.Config.Labels || {}), "mayday.self-updated": "true" },
       ExposedPorts: cfg.Config.ExposedPorts,
       HostConfig: cfg.HostConfig,
-      NetworkingConfig: { EndpointsConfig: cfg.NetworkSettings?.Networks
+      Networks: cfg.NetworkSettings?.Networks
         ? Object.fromEntries(Object.keys(cfg.NetworkSettings.Networks).map((n) => [n, {}]))
-        : {} },
+        : {},
     };
-    const create = await dockerApi("POST", `/containers/create?name=${encodeURIComponent(SELF_NAME)}`, createBody);
-    if (create.status !== 201) throw new Error(`Failed to create replacement container: ${create.body?.message || create.status}`);
-    const newId = create.body.Id;
-    const start = await dockerApi("POST", `/containers/${newId}/start`);
-    if (start.status !== 204 && start.status !== 304) throw new Error("Failed to start replacement container");
-
-    // 4 · wait for the replacement to be running, then remove self
-    setState({ phase: "restarting", message: "New version is starting…" });
-    for (let i = 0; i < 40; i++) {
-      await sleep(1500);
-      const check = await dockerApi("GET", `/containers/${newId}/json`);
-      if (check.status === 200 && check.body?.State?.Running) break;
+    const helperBody = {
+      Image: IMAGE,
+      Cmd: ["node", "custom-server.js", "--apply-update"],
+      Env: [
+        `APPLY_TARGET=${SELF_NAME}`,
+        `APPLY_IMAGE=${IMAGE}`,
+        `APPLY_CONFIG_JSON=${JSON.stringify(applyConfig)}`,
+      ],
+      Labels: { "mayday.update-helper": "true" },
+      HostConfig: {
+        Binds: [`${SOCK}:${SOCK}`],
+        AutoRemove: true,
+      },
+    };
+    const helper = await dockerApi("POST", "/containers/create", helperBody);
+    if (helper.status !== 201) {
+      throw new Error(`Failed to create update helper: ${helper.body?.message || helper.status}`);
     }
-    setState({ phase: "done", progress: 100, message: "Updated — this instance is now being replaced" });
-    await dockerApi("DELETE", `/containers/${id}?force=true`); // deletes the old container (this one)
+    const start = await dockerApi("POST", `/containers/${helper.body.Id}/start`);
+    if (start.status !== 204 && start.status !== 304) throw new Error("Failed to start update helper");
+
+    // The helper now stops this container — the UI reconnects when the
+    // replacement answers /api/health again.
+    setState({ phase: "restarting", progress: 90, message: "Replacement is starting — the dashboard will reconnect…" });
   } catch (e) {
     setState({ phase: "error", message: "Docker self-update failed", error: e?.message || String(e) });
     throw e;
