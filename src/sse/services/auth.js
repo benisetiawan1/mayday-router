@@ -331,6 +331,28 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
+  // Mayday Patch P39 (request-body errors are not credential errors):
+  // A 400/422 that names a bad REQUEST BODY — invalid_parameter_error / invalid_request_error,
+  // e.g. Kimi K3 tool-message pairing or "response_format type is unavailable now" — is the
+  // identical verdict for every credential of the provider. Locking them one by one parks the
+  // ENTIRE pool for 30s per bad body (~2 minutes for 700+ keys) and the client gives up (499)
+  // long before the fallback model is reached. Write no lock at all and return
+  // shouldFallback:false: the caller returns the upstream error immediately, and a combo moves
+  // straight on to its next model.
+  const INPUT_ERROR_PATTERNS = [
+    /invalid_parameter_error/i,
+    /invalid_request_error/i,
+    /InternalError\.Algo\.InvalidParameter/i,
+    /resolvable tool name/i,
+    /response_format type is unavailable/i,
+    /data_inspection_failed/i,
+  ];
+  if ((status === 400 || status === 422) && typeof errorText === "string" &&
+    INPUT_ERROR_PATTERNS.some((re) => re.test(errorText))) {
+    log.warn("AUTH", `${provider || "-"}${model ? " | " + model : ""} | ${status} is a request-body error, not a key error — no lock, returning to caller`);
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   // When the circuit-breaker / loop-guard toggle is OFF, do NOT write a per-account
   // model lock (mirrors chat behavior when the toggle is disabled). We still return
   // shouldFallback so the request falls through to the next account/provider, but we

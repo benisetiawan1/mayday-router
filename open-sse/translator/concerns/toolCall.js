@@ -214,9 +214,35 @@ export function fuzzyMatchToolName(candidate, validToolNames) {
   return candidate;
 }
 
-// Fix missing tool responses - insert empty tool_result if assistant has tool_use but next message has no tool_result
+// Fix missing tool responses - insert empty tool_result if assistant has tool_use but
+// next message has no tool_result.
+//
+// Mayday Patch P38 (tool-pairing safety): the old version only looked at the IMMEDIATE next
+// message, so when the client replied for a different tool_call id it injected a placeholder
+// IN FRONT of the client's own tool message. That produced two tool messages for one
+// assistant tool_call, and providers that pair tool replies to tool_calls BY ORDER reject the
+// whole request with HTTP 400 (`InvalidParameter ... need a resolvable tool name ... or match
+// a preceding assistant tool_call by order`) — one bad body then burned every credential of
+// the pool. Two guards now keep the conversation the upstream already accepts:
+//   (a) never insert while the client's own tool reply is adjacent, and
+//   (b) never insert a placeholder for an id that is answered anywhere later.
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
+
+  const isToolReply = (msg) =>
+    msg?.role === "tool" ||
+    (Array.isArray(msg?.content) && msg.content.some((block) => block?.type === "tool_result"));
+
+  // Every tool_call id that already has a response somewhere in the conversation.
+  const answeredIds = new Set();
+  for (const msg of body.messages) {
+    if (msg?.role === "tool" && msg.tool_call_id) answeredIds.add(msg.tool_call_id);
+    if (Array.isArray(msg?.content)) {
+      for (const block of msg.content) {
+        if (block?.type === "tool_result" && block.tool_use_id) answeredIds.add(block.tool_use_id);
+      }
+    }
+  }
 
   const newMessages = [];
 
@@ -230,17 +256,19 @@ export function fixMissingToolResponses(body) {
     const toolCallIds = getToolCallIds(msg);
     if (toolCallIds.length === 0) continue;
 
-    // Check if next message has tool_result
-    if (nextMsg && !hasToolResults(nextMsg, toolCallIds)) {
-      // Insert tool responses for each tool_call
-      for (const id of toolCallIds) {
-        // OpenAI format: role = "tool"
-        newMessages.push({
-          role: "tool",
-          tool_call_id: id,
-          content: ""
-        });
-      }
+    // Guard (a): the client already answered (any id) — leave the pairing untouched.
+    if (!nextMsg || isToolReply(nextMsg)) continue;
+
+    // Insert tool responses for each tool_call that has no response anywhere
+    for (const id of toolCallIds) {
+      if (answeredIds.has(id)) continue;
+      // OpenAI format: role = "tool"
+      newMessages.push({
+        role: "tool",
+        tool_call_id: id,
+        content: ""
+      });
+      answeredIds.add(id);
     }
   }
 
