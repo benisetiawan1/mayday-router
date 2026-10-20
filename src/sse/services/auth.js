@@ -347,8 +347,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     /response_format type is unavailable/i,
     /data_inspection_failed/i,
   ];
-  if ((status === 400 || status === 422) && typeof errorText === "string" &&
-    INPUT_ERROR_PATTERNS.some((re) => re.test(errorText))) {
+  const isBodyError = (status === 400 || status === 422) && typeof errorText === "string" &&
+    INPUT_ERROR_PATTERNS.some((re) => re.test(errorText));
+  // A 404 that names the MODEL as unknown is the same class: the upstream verdict does not
+  // depend on which key sent it, so walking the whole pool only parks every credential
+  // (DashScope "Model not exist." locked 244 keys in 15 minutes this way). Generic 404s
+  // (wrong path/host) keep their normal fallback behaviour.
+  const isUnknownModel = status === 404 && typeof errorText === "string" &&
+    /model_not_found|Model not exist|model[\s\S]{0,40}does not exist/i.test(errorText);
+  if (isBodyError || isUnknownModel) {
     log.warn("AUTH", `${provider || "-"}${model ? " | " + model : ""} | ${status} is a request-body error, not a key error — no lock, returning to caller`);
     return { shouldFallback: false, cooldownMs: 0 };
   }
