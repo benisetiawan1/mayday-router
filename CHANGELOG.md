@@ -3,6 +3,17 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.3-base (2026-10-21)
+
+### Fixed
+- Regression from 1.2.2-base: orphaned tool replies were flattened into
+  "[Tool result: ...]" assistant text, which models echoed as a bracket
+  pattern at the end of every reply. Orphans are now removed outright
+  (their referenced tool_call does not exist in the history, so the content
+  was unreachable), and the removal runs BEFORE fixMissingToolResponses so
+  any assistant tool_calls left unanswered get a backfilled empty tool
+  reply — pairing stays valid for order-pairing providers.
+
 ## 1.2.2-base (2026-10-21)
 
 ### Fixed

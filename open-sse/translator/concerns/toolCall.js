@@ -284,12 +284,15 @@ export function fixMissingToolResponses(body) {
   return body;
 }
 
-// Demote tool replies that resolve to no assistant tool_call to plain text.
-// Order-pairing providers (DashScope: "need a resolvable tool name ... or match
-// a preceding assistant tool_call by order") reject the WHOLE request for one
-// orphan, whatever introduced it (client history, compression, lossy
-// translation). Flattening keeps the content — last line of defense before
-// dispatch, never drops a message.
+// Remove tool replies that resolve to no assistant tool_call. Order-pairing
+// providers (DashScope: "need a resolvable tool name ... or match a preceding
+// assistant tool_call by order") reject the WHOLE request for one orphan.
+// The reply references a call that does not exist in this history, so its
+// content is already unreachable. v1.2.2 flattened these into "[Tool result:
+// ...]" assistant text — models then echoed that bracket pattern at the end of
+// every reply, so v1.2.3 removes orphans instead. Runs BEFORE
+// fixMissingToolResponses so any assistant tool_calls left unanswered by the
+// removal get a backfilled empty tool reply (pairing stays valid).
 export function dropOrphanToolMessages(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
@@ -298,35 +301,21 @@ export function dropOrphanToolMessages(body) {
     for (const id of getToolCallIds(msg)) calledIds.add(id);
   }
 
-  const textOf = (content) => {
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      return content.map((p) => (typeof p === "string" ? p : p?.text ?? "")).filter(Boolean).join("\n");
-    }
-    return "";
-  };
-  const flat = (text) => `[Tool result: ${text}]`;
+  const isOrphanBlock = (b) =>
+    b?.type === "tool_result" && b.tool_use_id && !calledIds.has(b.tool_use_id);
 
-  body.messages = body.messages.map((msg) => {
-    // OpenAI shape: role "tool" whose tool_call_id no longer resolves
-    if (msg?.role === "tool" && msg.tool_call_id && !calledIds.has(msg.tool_call_id)) {
-      return { role: "assistant", content: flat(textOf(msg.content)) };
-    }
-    // Claude shape: orphaned tool_result blocks inside user content
-    if (Array.isArray(msg?.content) && msg.content.some(
-      (b) => b?.type === "tool_result" && b.tool_use_id && !calledIds.has(b.tool_use_id)
-    )) {
-      return {
-        ...msg,
-        content: msg.content.map((b) =>
-          b?.type === "tool_result" && b.tool_use_id && !calledIds.has(b.tool_use_id)
-            ? { type: "text", text: flat(textOf(b.content)) }
-            : b
-        ),
-      };
-    }
-    return msg;
-  });
+  body.messages = body.messages
+    .map((msg) => {
+      // OpenAI shape: role "tool" whose tool_call_id no longer resolves
+      if (msg?.role === "tool" && msg.tool_call_id && !calledIds.has(msg.tool_call_id)) return null;
+      // Claude shape: strip orphaned tool_result blocks from user content
+      if (Array.isArray(msg?.content) && msg.content.some(isOrphanBlock)) {
+        const kept = msg.content.filter((b) => !isOrphanBlock(b));
+        return kept.length > 0 ? { ...msg, content: kept } : null;
+      }
+      return msg;
+    })
+    .filter((msg) => msg !== null);
 
   return body;
 }

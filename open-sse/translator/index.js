@@ -44,7 +44,12 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);
-  
+
+  // Remove tool replies whose assistant tool_call is gone (orphan) BEFORE
+  // backfill, so fixMissingToolResponses re-pairs whatever assistant
+  // tool_calls the removal left unanswered.
+  dropOrphanToolMessages(result);
+
   // Fix missing tool responses (insert empty tool_result if needed)
   fixMissingToolResponses(result);
 
@@ -123,12 +128,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       }
     }
   }
-
-  // Last line of defense before dispatch: demote tool replies whose assistant
-  // tool_call got lost somewhere above (client history, compression, lossy
-  // translation). Order-pairing providers (DashScope) reject the entire request
-  // for a single orphan; a no-op for shapes without role:"tool"/tool_result.
-  dropOrphanToolMessages(result);
 
   return result;
 }
