@@ -25,6 +25,18 @@ function sanitizeToolId(id) {
 export function ensureToolCallIds(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
+  // Shared remap old id -> replacement id: an assistant tool_call and its tool
+  // reply must land on the SAME new id. Sanitizing each side independently made
+  // un-sanitizable ids diverge into two different generated ids, which
+  // order-pairing providers (DashScope "need a resolvable tool name") reject.
+  const idRemap = new Map();
+  const remapId = (id, fallback) => {
+    if (typeof id === "string" && id && idRemap.has(id)) return idRemap.get(id);
+    const next = sanitizeToolId(id) || fallback;
+    if (typeof id === "string" && id) idRemap.set(id, next);
+    return next;
+  };
+
   for (let i = 0; i < body.messages.length; i++) {
     const msg = body.messages[i];
     if (msg.role === "assistant" && msg.tool_calls && Array.isArray(msg.tool_calls)) {
@@ -32,8 +44,7 @@ export function ensureToolCallIds(body) {
         const tc = msg.tool_calls[j];
         // Validate or regenerate ID for Anthropic compatibility
         if (!tc.id || !TOOL_ID_PATTERN.test(tc.id)) {
-          const sanitized = sanitizeToolId(tc.id);
-          tc.id = sanitized || generateToolCallId(i, j, tc.function?.name);
+          tc.id = remapId(tc.id, generateToolCallId(i, j, tc.function?.name));
         }
         if (!tc.type) {
           tc.type = "function";
@@ -47,8 +58,7 @@ export function ensureToolCallIds(body) {
 
     // Validate tool_call_id in tool messages (role: "tool")
     if (msg.role === "tool" && msg.tool_call_id && !TOOL_ID_PATTERN.test(msg.tool_call_id)) {
-      const sanitized = sanitizeToolId(msg.tool_call_id);
-      msg.tool_call_id = sanitized || generateToolCallId(i, 0);
+      msg.tool_call_id = remapId(msg.tool_call_id, generateToolCallId(i, 0));
     }
 
     // Also validate tool_use blocks in content (Claude format)
@@ -56,13 +66,11 @@ export function ensureToolCallIds(body) {
       for (let k = 0; k < msg.content.length; k++) {
         const block = msg.content[k];
         if (block.type === "tool_use" && block.id && !TOOL_ID_PATTERN.test(block.id)) {
-          const sanitized = sanitizeToolId(block.id);
-          block.id = sanitized || generateToolCallId(i, k, block.name);
+          block.id = remapId(block.id, generateToolCallId(i, k, block.name));
         }
         // Validate tool_use_id in tool_result blocks
         if (block.type === "tool_result" && block.tool_use_id && !TOOL_ID_PATTERN.test(block.tool_use_id)) {
-          const sanitized = sanitizeToolId(block.tool_use_id);
-          block.tool_use_id = sanitized || generateToolCallId(i, k);
+          block.tool_use_id = remapId(block.tool_use_id, generateToolCallId(i, k));
         }
       }
     }
@@ -273,6 +281,53 @@ export function fixMissingToolResponses(body) {
   }
 
   body.messages = newMessages;
+  return body;
+}
+
+// Demote tool replies that resolve to no assistant tool_call to plain text.
+// Order-pairing providers (DashScope: "need a resolvable tool name ... or match
+// a preceding assistant tool_call by order") reject the WHOLE request for one
+// orphan, whatever introduced it (client history, compression, lossy
+// translation). Flattening keeps the content — last line of defense before
+// dispatch, never drops a message.
+export function dropOrphanToolMessages(body) {
+  if (!body.messages || !Array.isArray(body.messages)) return body;
+
+  const calledIds = new Set();
+  for (const msg of body.messages) {
+    for (const id of getToolCallIds(msg)) calledIds.add(id);
+  }
+
+  const textOf = (content) => {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content.map((p) => (typeof p === "string" ? p : p?.text ?? "")).filter(Boolean).join("\n");
+    }
+    return "";
+  };
+  const flat = (text) => `[Tool result: ${text}]`;
+
+  body.messages = body.messages.map((msg) => {
+    // OpenAI shape: role "tool" whose tool_call_id no longer resolves
+    if (msg?.role === "tool" && msg.tool_call_id && !calledIds.has(msg.tool_call_id)) {
+      return { role: "assistant", content: flat(textOf(msg.content)) };
+    }
+    // Claude shape: orphaned tool_result blocks inside user content
+    if (Array.isArray(msg?.content) && msg.content.some(
+      (b) => b?.type === "tool_result" && b.tool_use_id && !calledIds.has(b.tool_use_id)
+    )) {
+      return {
+        ...msg,
+        content: msg.content.map((b) =>
+          b?.type === "tool_result" && b.tool_use_id && !calledIds.has(b.tool_use_id)
+            ? { type: "text", text: flat(textOf(b.content)) }
+            : b
+        ),
+      };
+    }
+    return msg;
+  });
+
   return body;
 }
 

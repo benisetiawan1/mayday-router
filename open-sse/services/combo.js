@@ -178,11 +178,17 @@ export function detectRequiredCapabilities(body) {
     }
   };
 
-  // Modalities: current user turn only (trailing user run across each known shape).
-  for (const m of trailingUserItems(body.messages)) scanMessage(m);              // openai / claude / hermes / ollama
-  for (const it of trailingUserItems(body.input)) scanContent(it.content);       // responses
-  const contents = body.contents || body.request?.contents;                      // gemini / antigravity
-  for (const c of trailingUserItems(contents)) scanContent(c.parts);
+  // Modalities: scan the WHOLE conversation, not just the trailing user run.
+  // Agentic clients (Kilo, Codex) keep screenshots in an earlier turn while the
+  // final message is often text-only; a tail-only scan then let the image fall
+  // through to a non-vision model, which stripped it ("[image omitted: model has
+  // no vision support]"). Trade-off: once an image exists anywhere in a session,
+  // the vision pool is tried first on every request — semantically correct, small
+  // overhead, and exactly what the combo-vision feature promises.
+  for (const m of body.messages ?? []) scanMessage(m);
+  for (const it of body.input ?? []) scanContent(it.content);
+  const contents = body.contents || body.request?.contents;
+  for (const c of contents ?? []) scanContent(c.parts);
 
   // search: temporarily disabled in auto-switch (feature not wired yet).
 
@@ -308,7 +314,11 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
     try {
-      const result = await handleSingleModel(body, modelStr);
+      // Each member gets its own copy: pre-translate hooks (modality strip,
+      // rtk, headroom) mutate the body in-place, and a mutation written by a
+      // failed member (e.g. "[image omitted]" placeholders) must not leak
+      // into the next member's request.
+      const result = await handleSingleModel(structuredClone(body), modelStr);
       
       // Success (2xx) - return response
       if (result.ok) {
@@ -584,7 +594,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   const t0 = Date.now();
-  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
+  // Clone per panel call: members run in parallel on one body — in-place
+  // mutation (modality strip, rtk, headroom) would race across members.
+  const calls = panel.map((m) => withTimeout(handleSingleModel(structuredClone(panelBody), m, true), cfg.panelHardTimeoutMs));
   const settled = await collectPanel(calls, { ...cfg, minPanel });
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 

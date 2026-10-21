@@ -1,5 +1,5 @@
 import { FORMATS } from "./formats.js";
-import { ensureToolCallIds, fixMissingToolResponses } from "./concerns/toolCall.js";
+import { ensureToolCallIds, fixMissingToolResponses, dropOrphanToolMessages } from "./concerns/toolCall.js";
 import { prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools, decloakStreamChunk } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
@@ -123,6 +123,12 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       }
     }
   }
+
+  // Last line of defense before dispatch: demote tool replies whose assistant
+  // tool_call got lost somewhere above (client history, compression, lossy
+  // translation). Order-pairing providers (DashScope) reject the entire request
+  // for a single orphan; a no-op for shapes without role:"tool"/tool_result.
+  dropOrphanToolMessages(result);
 
   return result;
 }

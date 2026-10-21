@@ -179,7 +179,7 @@ function accumulateAssistantText(body) {
             for (const c of item.content) text += c?.text || c?.output || (typeof c === "string" ? c : "");
         }
 
-        if (Array.isArray(item.tool_calls)) {
+        if (item?.tool_calls && Array.isArray(item.tool_calls)) {
             for (const tc of item.tool_calls) {
                 text += `${tc?.function?.name || ""}:${tc?.function?.arguments || ""}`;
             }
