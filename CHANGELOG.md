@@ -3,6 +3,19 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.5-base (2026-10-21)
+
+### Fixed
+- kimi-k3 400 "tool messages need a resolvable tool name" on combo requests
+  (direct requests were unaffected): when the capacity adapter routed an
+  oversized conversation to an adapter model, stripHistoryForContext dropped
+  the middle of the history but kept the trailing tool replies — whose
+  assistant tool_calls had just been cut away, orphaning them. The last
+  assistant message is now kept together with its trailing run, so the cut
+  can no longer orphan a tool reply. Root cause confirmed empirically
+  against kimi-k3: an orphaned tool reply 400s; a resolvable id passes;
+  `name` does not rescue; adjacency is not required; duplicates tolerated.
+
 ## 1.2.4-base (2026-10-21)
 
 ### Fixed

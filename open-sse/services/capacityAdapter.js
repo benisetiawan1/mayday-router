@@ -132,8 +132,14 @@ export function stripHistoryForContext(body, contextWindow) {
   const isAssistant = (r) => r === "assistant" || r === "model";
   let i = rest.length - 1;
   while (i >= 0 && !isAssistant(rest[i]?.role)) i--;
-  const tail = rest.slice(i + 1);          // current user turn (has media) — always kept
-  const older = rest.slice(0, i + 1);      // everything before it
+  // Keep the LAST assistant message WITH the tail: the trailing run after it
+  // starts with that assistant's tool replies. Cutting the assistant away
+  // (old behavior) orphaned those replies, and kimi-k3/DashScope reject the
+  // whole request ("tool messages need a resolvable tool name") for one
+  // orphan. Verified empirically: only unresolved ids 400; name/adjacency
+  // are irrelevant.
+  const tail = i >= 0 ? rest.slice(i) : rest;
+  const older = i >= 0 ? rest.slice(0, i) : [];
   if (older.length === 0) return body;
 
   const contentOf = (m) => m.content ?? m.parts;
