@@ -3,6 +3,17 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.4-base (2026-10-21)
+
+### Fixed
+- Regression from 1.2.3: orphan-tool detection false-positived on real client
+  history, so valid tool results were dropped from the request — the model
+  lost its own tool context, looped, and confabulated ("The ls output is
+  merged by an alias."). dropOrphanToolMessages is now UNWIRED from the
+  translation pipeline entirely; pairing safety stays with the id remap
+  (1.2.2), the P38 backfill, and the headroom compression guard (1.2.2),
+  none of which touch valid messages.
+
 ## 1.2.3-base (2026-10-21)
 
 ### Fixed

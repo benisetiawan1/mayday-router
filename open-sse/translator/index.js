@@ -1,5 +1,5 @@
 import { FORMATS } from "./formats.js";
-import { ensureToolCallIds, fixMissingToolResponses, dropOrphanToolMessages } from "./concerns/toolCall.js";
+import { ensureToolCallIds, fixMissingToolResponses } from "./concerns/toolCall.js";
 import { prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools, decloakStreamChunk } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
@@ -44,11 +44,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);
-
-  // Remove tool replies whose assistant tool_call is gone (orphan) BEFORE
-  // backfill, so fixMissingToolResponses re-pairs whatever assistant
-  // tool_calls the removal left unanswered.
-  dropOrphanToolMessages(result);
 
   // Fix missing tool responses (insert empty tool_result if needed)
   fixMissingToolResponses(result);

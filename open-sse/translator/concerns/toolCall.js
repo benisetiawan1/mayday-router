@@ -284,15 +284,12 @@ export function fixMissingToolResponses(body) {
   return body;
 }
 
-// Remove tool replies that resolve to no assistant tool_call. Order-pairing
-// providers (DashScope: "need a resolvable tool name ... or match a preceding
-// assistant tool_call by order") reject the WHOLE request for one orphan.
-// The reply references a call that does not exist in this history, so its
-// content is already unreachable. v1.2.2 flattened these into "[Tool result:
-// ...]" assistant text — models then echoed that bracket pattern at the end of
-// every reply, so v1.2.3 removes orphans instead. Runs BEFORE
-// fixMissingToolResponses so any assistant tool_calls left unanswered by the
-// removal get a backfilled empty tool reply (pairing stays valid).
+// Remove tool replies that resolve to no assistant tool_call. NOT WIRED:
+// both wirings regressed live traffic — flattening (1.2.2) made models echo
+// "[Tool result: ...]", removal (1.2.3) false-positive'd on real client
+// history and dropped valid tool results, leaving the model context-blind
+// and looping. Re-add only after logging real orphan shapes from production
+// traffic proves the detection is sound.
 export function dropOrphanToolMessages(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
