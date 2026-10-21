@@ -89,6 +89,35 @@ function hasUnsafeResponsesInputForCompression(body) {
   });
 }
 
+// A compressed response that drops an assistant tool_call while keeping its
+// role:"tool" reply (or a tool_use while keeping its tool_result) makes
+// order-pairing providers (DashScope "need a resolvable tool name") reject the
+// whole request. Guards every path that REPLACES message structure; Kiro only
+// writes text back into existing fields, so it is exempt.
+function toolPairingIntact(messages) {
+  if (!Array.isArray(messages)) return true;
+  const calledIds = new Set();
+  for (const msg of messages) {
+    if (msg?.role === "assistant" && Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls) if (tc?.id) calledIds.add(tc.id);
+    }
+    if (Array.isArray(msg?.content)) {
+      for (const block of msg.content) {
+        if (block?.type === "tool_use" && block.id) calledIds.add(block.id);
+      }
+    }
+  }
+  for (const msg of messages) {
+    if (msg?.role === "tool" && msg.tool_call_id && !calledIds.has(msg.tool_call_id)) return false;
+    if (Array.isArray(msg?.content)) {
+      for (const block of msg.content) {
+        if (block?.type === "tool_result" && block.tool_use_id && !calledIds.has(block.tool_use_id)) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function collectKiroHeadroomMessages(body) {
   const state = body?.conversationState;
   if (!state || typeof state !== "object") return null;
@@ -264,6 +293,10 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
+      if (!toolPairingIntact(data.messages)) {
+        setDiagnostic(diagnostics, "compressed response broke tool pairing — body left untouched");
+        return null;
+      }
       const claudeBody = openaiToClaudeRequest(model, { ...oai, messages: data.messages }, false);
       if (Array.isArray(claudeBody?.messages)) body.messages = claudeBody.messages;
       if (claudeBody?.system !== undefined) body.system = claudeBody.system;
@@ -286,6 +319,10 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
+      if (!toolPairingIntact(data.messages)) {
+        setDiagnostic(diagnostics, "compressed response broke tool pairing — body left untouched");
+        return null;
+      }
       // input: undefined so the translator rebuilds input from the compressed
       // messages instead of returning the original input unchanged.
       const responsesBody = openaiToOpenAIResponsesRequest(
@@ -324,6 +361,10 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     }
     const data = await callCompress(url, body[key], model, timeoutMs, compressUserMessages, diagnostics || {});
     if (!data) return null;
+    if (!toolPairingIntact(data.messages)) {
+      setDiagnostic(diagnostics, "compressed response broke tool pairing — body left untouched");
+      return null;
+    }
     body[key] = data.messages;
     if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
     return data;

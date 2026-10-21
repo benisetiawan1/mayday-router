@@ -3,6 +3,29 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.2-base (2026-10-21)
+
+### Fixed
+- DashScope-family HTTP 400 ("tool messages need a resolvable tool name"):
+  tool replies whose assistant tool_call went missing (client history, lossy
+  translation) are now demoted to plain text before dispatch instead of being
+  forwarded as orphans, and `ensureToolCallIds` remaps invalid ids on both
+  sides of a pair to the SAME replacement id (previously each side generated
+  a different one).
+- Headroom compression: proxy responses that break tool_call↔tool pairing are
+  rejected fail-open — the request body is left untouched, matching rtk's
+  fail-open contract.
+- Combo routing: each member (fallback loop and fusion panel) now gets its own
+  copy of the request body, so in-place mutations written by a failed member
+  (e.g. "[image omitted]" placeholders from a non-vision model) no longer leak
+  into the next member's request; fusion panel calls also lose a
+  parallel-mutation race.
+- Custom-model delete: no longer falls back destructively; 404
+  model-not-found no longer burns the whole credential pool.
+- Updater: verifies the version actually changed before declaring success and
+  refuses swapping onto the same running image.
+- Dockerfile: `apk upgrade` failures no longer abort the image build.
+
 ## 1.2.1-base (2026-10-01)
 
 ### Fixed

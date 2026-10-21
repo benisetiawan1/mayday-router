@@ -7,7 +7,7 @@ RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories
 
 FROM base AS builder
 
-RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
+RUN (apk --no-cache upgrade || true) && apk --no-cache add python3 make g++ linux-headers
 
 COPY package.json ./
 RUN npm install --registry=https://registry.npmmirror.com
@@ -59,7 +59,7 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
 # Note: when /var/run/docker.sock is mounted (self-update feature), keep the
 # socket's group on the app process — plain `su-exec node` drops supplementary
 # groups and the server then gets EACCES on the socket.
-RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
+RUN (apk --no-cache upgrade || true) && apk --no-cache add su-exec && \
   printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home /app/skills 2>/dev/null\nSOCK_GID=$(stat -c %%g /var/run/docker.sock 2>/dev/null)\nif [ -n "$SOCK_GID" ]; then exec su-exec node:$SOCK_GID "$@"; else exec su-exec node "$@"; fi\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 
