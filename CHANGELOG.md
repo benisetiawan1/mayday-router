@@ -3,6 +3,18 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.9-base (2026-10-29)
+
+### Fixed
+- Headroom compression for Claude conversations no longer round-trips the
+  whole body through OpenAI: only text leaves are projected to the compress
+  proxy and written back in place — native Claude PDF/document blocks,
+  images, signed thinking, cache_control, and tool-result is_error flags
+  are preserved byte-for-byte, tool pairing survives compression, and
+  orphaned tool_result projections are pruned so the proxy never sees an
+  invalid pair. All failures stay fail-open — body untouched (port of
+  9router 86adae3, with the Kiro apply path generalized and shared).
+
 ## 1.2.8-base (2026-10-29)
 
 ### Fixed
