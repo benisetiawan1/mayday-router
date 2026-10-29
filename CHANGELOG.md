@@ -3,6 +3,23 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.8-base (2026-10-29)
+
+### Fixed
+- Combo streaming: a member whose stream ends without any content (e.g.
+  Gemini MALFORMED_FUNCTION_CALL hidden inside a "successful" stream) now
+  falls through to the next member instead of returning an empty answer;
+  the peek is bounded (45s deadline, fail-open) and the replayed stream is
+  byte-faithful — no chunk loss or duplication (port of 9router ca7b540).
+- Forced-SSE→JSON responses for Claude-format clients now reuse the proper
+  openai→claude message conversion — tool_use, thinking, and usage blocks
+  survive, and finish_reason "length" maps to "max_tokens" (port of 9router
+  1d4335d).
+- OpenCode fingerprint: tool definitions colliding with the
+  bash/glob/grep/read quartet adopt the canonical definition in place, so
+  the free-tier gate sees exactly the tools it expects (port of 9router
+  483c10f).
+
 ## 1.2.7-base (2026-10-29)
 
 ### Fixed

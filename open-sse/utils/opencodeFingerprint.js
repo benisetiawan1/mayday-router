@@ -22,6 +22,30 @@ export function fingerprintToolKey(name) {
   return OPENCODE_FINGERPRINT_TOOLS.includes(lower) ? lower : "";
 }
 
+// Canonical placeholder definition for a quartet member. `concealFingerprintToolNames`
+// adopts it in place for any caller tool that already uses a fingerprint name, so the
+// upstream gate sees one gate-satisfying definition per member instead of the caller's
+// wording; `appendMissingFingerprintTools` appends the same shape when a member is absent.
+function fingerprintToolDefinition(name) {
+  return {
+    name,
+    description: "This tool is currently unavailable and must not be used.",
+    parameters: { type: "object", properties: {} },
+  };
+}
+
+// Write `description` + `parameters` into a tool, preserving its flat vs chat
+// ({function:{...}}) shape so the executor's downstream handling is unchanged.
+function withFingerprintDefinition(tool, def) {
+  const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function)
+    ? tool.function
+    : null;
+  const { name, description, parameters } = def;
+  return fn
+    ? { ...tool, function: { ...fn, name, description, parameters } }
+    : { ...tool, name, description, parameters };
+}
+
 /** Read a tool name from either flat ({name}) or chat ({function:{name}}) shape. */
 function toolNameOf(tool) {
   if (!tool || typeof tool !== "object" || Array.isArray(tool)) return "";
@@ -65,15 +89,13 @@ export function concealFingerprintToolNames(tools) {
     if (seenQuartet.has(key)) continue;
     seenQuartet.add(key);
 
+    // Any caller tool that already speaks a fingerprint name adopts the canonical
+    // quartet definition in place, so the wire carries one gate-satisfying tool per
+    // member. Case variants are still renamed (and mapped for the response side).
     if (current !== key) {
       map.set(key, current);
-      const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function)
-        ? tool.function
-        : null;
-      out.push(fn ? { ...tool, function: { ...fn, name: key } } : { ...tool, name: key });
-    } else {
-      out.push(tool);
     }
+    out.push(withFingerprintDefinition(tool, fingerprintToolDefinition(key)));
   }
   return { tools: out, map };
 }
@@ -83,19 +105,8 @@ export function appendMissingFingerprintTools(tools, flat) {
   const list = Array.isArray(tools) ? tools : [];
   for (const name of OPENCODE_FINGERPRINT_TOOLS) {
     if (list.some((tool) => fingerprintToolKey(toolNameOf(tool)) === name)) continue;
-    list.push(flat ? {
-      type: "function",
-      name,
-      description: "This tool is currently unavailable and must not be used.",
-      parameters: { type: "object", properties: {} },
-    } : {
-      type: "function",
-      function: {
-        name,
-        description: "This tool is currently unavailable and must not be used.",
-        parameters: { type: "object", properties: {} },
-      },
-    });
+    const def = fingerprintToolDefinition(name);
+    list.push(flat ? { type: "function", ...def } : { type: "function", function: def });
   }
   return list;
 }

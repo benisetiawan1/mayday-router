@@ -1,5 +1,6 @@
 import { FORMATS } from "../../translator/formats.js";
 import { needsTranslation } from "../../translator/index.js";
+import { openAICompletionToClaudeMessage } from "../../translator/concerns/claudeMessage.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { normalizeKimiToolCalls } from "../../utils/kimiToolParser.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
@@ -11,72 +12,6 @@ import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, sav
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { extractToolNames } from "../../translator/concerns/toolCall.js";
-
-/**
- * Convert OpenAI chat.completion response to Claude message format.
- * Used when client sent Claude-format request but upstream returned OpenAI format
- * (e.g. relayn provider where request was translated CLAUDE→OPENAI upstream).
- */
-export function openaiToClaudeNonStreaming(openaiBody, model) {
-  if (!openaiBody?.choices?.[0]) return openaiBody;
-
-  const choice = openaiBody.choices[0];
-  const message = choice.message || {};
-  const text = message.content || "";
-  const reasoning = message.reasoning_content || "";
-  const toolCalls = message.tool_calls || [];
-
-  // Build Claude content array
-  const content = [];
-  if (reasoning) {
-    content.push({ type: "thinking", thinking: reasoning });
-  }
-  if (text) {
-    content.push({ type: "text", text });
-  }
-  for (const tc of toolCalls) {
-    let args = {};
-    try {
-      args = JSON.parse(tc.function?.arguments || "{}");
-    } catch {}
-    content.push({
-      type: "tool_use",
-      id: tc.id,
-      name: tc.function?.name || "",
-      input: args
-    });
-  }
-
-  // Map finish reason
-  let stopReason = choice.finish_reason;
-  if (stopReason === "stop") stopReason = "end_turn";
-  else if (stopReason === "tool_calls") stopReason = "tool_use";
-
-  // Map usage
-  const usage = openaiBody.usage || {};
-  const claudeUsage = {};
-  if (usage.prompt_tokens != null) {
-    claudeUsage.input_tokens = usage.prompt_tokens;
-    claudeUsage.output_tokens = usage.completion_tokens || 0;
-    if (usage.prompt_tokens_details?.cached_tokens) {
-      claudeUsage.cache_read_input_tokens = usage.prompt_tokens_details.cached_tokens;
-    }
-    if (usage.completion_tokens_details?.reasoning_tokens) {
-      claudeUsage.output_tokens = (usage.completion_tokens || 0) + usage.completion_tokens_details.reasoning_tokens;
-    }
-  }
-
-  return {
-    id: `msg_${(openaiBody.id || "").replace("chatcmpl-", "") || Date.now()}`,
-    type: "message",
-    role: "assistant",
-    content,
-    model: model || openaiBody.model || "claude",
-    stop_reason: stopReason,
-    stop_sequence: null,
-    usage: claudeUsage
-  };
-}
 
 /**
  * Translate non-streaming response body from provider format → OpenAI format.
@@ -278,11 +213,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   // Reverse translation: provider format → Claude when client sent Claude format.
   // After translateNonStreamingResponse the body is always in OpenAI shape,
-  // so openaiToClaudeNonStreaming works for any non-Claude target provider.
+  // so openAICompletionToClaudeMessage works for any non-Claude target provider.
   let didReverse = false;
   let finalResponse = translatedResponse;
   if (sourceFormat === FORMATS.CLAUDE && targetFormat !== FORMATS.CLAUDE) {
-    const reversed = openaiToClaudeNonStreaming(translatedResponse, model);
+    const reversed = openAICompletionToClaudeMessage(translatedResponse, model);
     finalResponse = decloakToolNames(reversed, toolNameMap);
     didReverse = true;
   }
