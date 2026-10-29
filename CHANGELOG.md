@@ -3,6 +3,22 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.6-base (2026-10-29)
+
+### Fixed
+- Non-streaming responses carrying an SSE error body (HTTP 200 + error
+  frame) are now rejected with the upstream status instead of returning an
+  empty 200 "success" (port of 9router 56dbf46).
+- role:"tool" messages containing image_url parts are converted to Claude
+  image blocks — Anthropic no longer 400s on tool results with screenshots
+  (port of 9router 9500965).
+- Adaptive-thinking downgrade now reads the Haiku major version: Haiku 5.5
+  keeps adaptive thinking on the Claude passthrough; only pre-5 haiku ids
+  are downgraded (port of 9router 0ad0a72).
+- Headroom "phantom savings" warnings now require BOTH messageBytes and
+  bodyBytes to fail to shrink — tool-dominated bodies no longer trigger
+  false warnings (port of 9router db81a8c).
+
 ## 1.2.5-base (2026-10-21)
 
 ### Fixed

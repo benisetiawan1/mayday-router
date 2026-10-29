@@ -96,8 +96,20 @@ function fixToolUseOrdering(messages) {
   return merged;
 }
 
-// Models that reject thinking.type "adaptive" + output_config.effort (Opus 4.5+/Sonnet 4.6+ only)
-const ADAPTIVE_THINKING_UNSUPPORTED = /haiku/i;
+// Models that reject thinking.type "adaptive" + output_config.effort
+// Extract the first version-like number from a model id (handles haiku-4-5,
+// haiku-4.5, claude-4.5-haiku, provider-prefixed variants).
+function extractMajorVersion(model) {
+  const m = /(?:^|[^0-9])(\d+)(?:[.-]\d+)*(?:[^0-9]|$)/.exec(model);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function isAdaptiveThinkingUnsupported(model) {
+  if (!model || !/haiku/i.test(model)) return false;
+  const major = extractMajorVersion(model);
+  if (major == null) return true;
+  return major < 5;
+}
 
 function handlesThinkingBlocks(provider) {
   return provider === "claude" || provider?.startsWith("anthropic-compatible") || provider === "deepseek";
@@ -127,12 +139,12 @@ export function normalizeClaudePassthrough(body, model = "") {
   if (!body || typeof body !== "object") return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
-  if (body.thinking?.type === "adaptive" && ADAPTIVE_THINKING_UNSUPPORTED.test(model)) {
+  if (body.thinking?.type === "adaptive" && isAdaptiveThinkingUnsupported(model)) {
     body.thinking = { type: "enabled", budget_tokens: 10000 };
   }
 
   // 2. Strip effort param for models that don't support it (keep other output_config fields)
-  if (ADAPTIVE_THINKING_UNSUPPORTED.test(model) && body.output_config?.effort != null) {
+  if (isAdaptiveThinkingUnsupported(model) && body.output_config?.effort != null) {
     delete body.output_config.effort;
     if (Object.keys(body.output_config).length === 0) delete body.output_config;
   }

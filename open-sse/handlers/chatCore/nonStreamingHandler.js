@@ -229,6 +229,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
     }
+    if (parsed.error) {
+      const status = (parsed.error.status >= 400 && parsed.error.status <= 599) ? parsed.error.status : HTTP_STATUS.BAD_GATEWAY;
+      appendLog({ status: `FAILED ${status}` });
+      console.error(`[ChatCore] SSE error from ${provider}:`, parsed.error.message);
+      return createErrorResult(status, parsed.error.message);
+    }
     responseBody = parsed;
   } else {
     try {

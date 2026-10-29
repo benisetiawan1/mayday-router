@@ -392,8 +392,15 @@ export function formatHeadroomSizeLog(diagnostics) {
 
 export function isHeadroomPhantomSavings(stats, diagnostics, minShrinkRatio = 0.05) {
   if (!stats?.tokens_saved || stats.tokens_saved <= 0) return false;
-  const before = diagnostics?.before?.bodyBytes || 0;
-  const after = diagnostics?.after?.bodyBytes || 0;
-  if (before <= 0 || after <= 0) return false;
-  return after >= before * (1 - minShrinkRatio);
+  const bodyBefore = diagnostics?.before?.bodyBytes || 0;
+  const bodyAfter = diagnostics?.after?.bodyBytes || 0;
+  const msgBefore = diagnostics?.before?.messageBytes || 0;
+  const msgAfter = diagnostics?.after?.messageBytes || 0;
+  if (bodyBefore <= 0 || bodyAfter <= 0 || msgBefore <= 0 || msgAfter <= 0) return false;
+  // Phantom only when neither messages nor the overall body shrank
+  // meaningfully — tool-heavy bodies barely move even when the compressible
+  // conversation content shrinks a lot.
+  const bodyUnchanged = bodyAfter >= bodyBefore * (1 - minShrinkRatio);
+  const msgUnchanged = msgAfter >= msgBefore * (1 - minShrinkRatio);
+  return bodyUnchanged && msgUnchanged;
 }
