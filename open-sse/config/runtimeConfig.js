@@ -45,6 +45,12 @@ function envUrl(name, def) {
 }
 export const SEARXNG_URL = envUrl("SEARXNG_URL", "http://127.0.0.1:8888/search");
 
+// Session connection pinning (prompt-cache retention). How long a pinned
+// upstream connection stays pinned since its last use, and the max number of
+// concurrent pins. Env: SESSION_PIN_TTL_MS / SESSION_PIN_MAX.
+export const SESSION_PIN_TTL_MS = envMs("SESSION_PIN_TTL_MS", 2 * 60 * 60 * 1000);
+export const SESSION_PIN_MAX = envMs("SESSION_PIN_MAX", 5000);
+
 // Inter-chunk stall timeout (once tokens are flowing). Generous headroom so
 // slow reasoning models aren't aborted mid-stream. Env: STREAM_STALL_TIMEOUT_MS.
 export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 360 * 1000);

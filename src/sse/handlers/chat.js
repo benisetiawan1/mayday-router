@@ -48,6 +48,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { maybeWaitForCooldown, MAX_COOLDOWN_RETRIES } from "open-sse/utils/cooldownRetry.js";
+import { resolvePinKey, getPinnedConnection, pinConnection, unpinConnection } from "open-sse/services/sessionConnectionPinner.js";
 
 function checkCircuitBreaker(provider, proxyHash = null, enabled = true) {
   if (!enabled) return false;
@@ -318,7 +319,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // Extract userAgent and preferred connection from request
   const userAgent = request?.headers?.get("user-agent") || "";
-  const preferredConnectionId = request?.headers?.get("x-connection-id") || null;
+  const explicitPreferredConnectionId = request?.headers?.get("x-connection-id") || null;
+
+  // Per-session connection pin: keep the same upstream account across turns of
+  // one conversation so the provider's prompt cache survives. Fail-open — a
+  // missing pinKey or pin just falls through to normal rotation below.
+  const pinKey = resolvePinKey({ headers: clientRawRequest?.headers, body, apiKey });
+  let pinnedConnectionId = pinKey ? getPinnedConnection(provider, pinKey) : null;
 
   const chatSettings = await getSettings();
   const circuitBreakerEnabled = chatSettings.circuitBreakerEnabled !== false && chatSettings.circuitBreakerEnabled !== 0;
@@ -376,6 +383,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       return withSelectedConnectionHeader(new Response(null, { status: 499 }), lastExcludedConnectionId);
     }
 
+    const preferredConnectionId = pinnedConnectionId || explicitPreferredConnectionId || null;
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     // All accounts unavailable
@@ -426,6 +434,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       );
     }
 
+    // Pin the selected account for this session so the next turn reuses it
+    // (prompt cache). Death/fallback clears the pin further down.
+    if (pinKey && credentials.connectionId) {
+      pinConnection(provider, pinKey, credentials.connectionId);
+      pinnedConnectionId = credentials.connectionId;
+    }
+
     // Compute proxy bucket key for this account — groups accounts by shared proxy.
     // Uses the original credentials: proxy config (connectionProxyUrl/proxyPoolId)
     // is a connection-level field that does not change on token refresh, and
@@ -436,6 +451,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Accounts on other proxies are still tried.
     if (checkCircuitBreaker(provider, proxyHash, circuitBreakerEnabled)) {
       log.warn("AUTH", `${provider} proxy bucket ${proxyHash} circuit breaker OPEN — skipping account ${credentials.connectionName}`);
+      if (pinKey) { unpinConnection(credentials.connectionId); pinnedConnectionId = null; }
       excludeConnectionIds.add(credentials.connectionId);
       lastExcludedConnectionId = credentials.connectionId;
       continue;
@@ -626,6 +642,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
       liveFallback(liveId, { fromAccount: credentials.connectionName, status: result.status });
+      if (pinKey) { unpinConnection(credentials.connectionId); pinnedConnectionId = null; }
       excludeConnectionIds.add(credentials.connectionId);
       lastError = errorText;
       lastStatus = result.status;

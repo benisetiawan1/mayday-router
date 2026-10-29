@@ -3,6 +3,19 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.10-base (2026-10-29)
+
+### Added
+- Session connection pinning for chat requests: a conversation now reuses
+  the same upstream connection (API key) across turns, so the provider-side
+  prompt cache survives and long sessions stop paying full price for their
+  prefix every turn. The pin clears when the connection dies (quota
+  exhausted / cooldown / circuit breaker), so free-quota rotation continues
+  exactly as before — pinning only removes the unnecessary switches. Pin
+  key: the client's session/conversation id (request headers or body
+  metadata), falling back to the client API key. TTL 2h idle, cap 5000,
+  everything fail-open.
+
 ## 1.2.9-base (2026-10-29)
 
 ### Fixed
