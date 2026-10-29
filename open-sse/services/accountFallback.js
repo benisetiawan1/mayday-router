@@ -1,4 +1,4 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS } from "../config/errorConfig.js";
+import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, REQUEST_BODY_ERROR_PATTERNS } from "../config/errorConfig.js";
 import {
   getCircuitBreaker,
   getAllCircuitBreakerStatuses,
@@ -26,7 +26,13 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
- * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, requestScoped?: boolean }}
+ *
+ * `shouldFallback` answers "is the CREDENTIAL at fault?" (account rotation).
+ * `requestScoped` answers "is the REQUEST itself what this member rejected?"
+ * (combo rotation). They are different questions: a validation 400/422 means the
+ * credential is healthy but this member cannot serve this request, so combo
+ * rotation must still try the next member.
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0) {
   const lowerError = errorText
@@ -57,6 +63,16 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
       }
       return { shouldFallback: true, cooldownMs: rule.cooldownMs };
     }
+  }
+
+  // Request-scoped 4xx that matched no rule above: a 400/422 naming the REQUEST
+  // body (invalid parameter, unresolvable tool name, etc.) says nothing about the
+  // credential. Report no account fallback (a request-scoped fault must not evict
+  // a healthy account — Mayday Patch P39) and flag requestScoped so the combo
+  // advances to its next member instead of ending.
+  if ((status === 400 || status === 422) && typeof errorText === "string" &&
+      REQUEST_BODY_ERROR_PATTERNS.some((re) => re.test(errorText))) {
+    return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
   }
 
   // Default: transient cooldown for any unmatched error

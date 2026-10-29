@@ -3,6 +3,23 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.7-base (2026-10-29)
+
+### Fixed
+- Combo no longer ends on a request-scoped 4xx: validation/body-level errors
+  from one member (e.g. invalid_parameter_error, "need a resolvable tool
+  name") advance to the next member, and when every member rejects, the
+  first real error is returned with its status. Account locking stays off
+  (P39 no-lock preserved) (port of 9router 5cdcddf).
+- Gemini tool schemas: multi-type unions pick the best single type by
+  structural clues, and `items`/`properties`/`required` are pruned to
+  satisfy Gemini protobuf type predicates — schemas from agentic clients no
+  longer 400 on Gemini members (port of 9router 8db1f4a).
+- Streamed tool_call fragments without an `id` get a synthesized stable id,
+  and fingerprint-renamed tool names are restored on the openai→openai
+  passthrough — strict clients no longer abort the tool loop (port of
+  9router 95c9d03).
+
 ## 1.2.6-base (2026-10-29)
 
 ### Fixed

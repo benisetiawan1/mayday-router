@@ -78,6 +78,19 @@ export const ERROR_RULES = [
   { status: 429, backoff: true },
 ];
 
+// Request-body validation errors (400/422). These are request-scoped: the
+// verdict is identical for every credential of a provider, so a combo should
+// advance to its next member and account rotation must not lock anything.
+// Mirrors Mayday Patch P39 (src/sse/services/auth.js).
+export const REQUEST_BODY_ERROR_PATTERNS = [
+  /invalid_parameter_error/i,
+  /invalid_request_error/i,
+  /InternalError\.Algo\.InvalidParameter/i,
+  /resolvable tool name/i,
+  /response_format type is unavailable/i,
+  /data_inspection_failed/i,
+];
+
 // Backward compat: COOLDOWN_MS object (used by index.js re-export)
 export const COOLDOWN_MS = {
   unauthorized: COOLDOWN.long,
