@@ -3,6 +3,21 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.11-base (2026-10-30)
+
+### Fixed
+- CodeBuddy intl gateway now requires X-Conversation-ID /
+  X-Conversation-Request-ID / X-Conversation-Message-ID headers (HTTP 400
+  code 11128 otherwise): the codebuddy-intl executor derives a stable
+  conversation id (session key, else first user message, else random) plus
+  fresh per-request ids, computed from the pre-transform body (port of
+  VansRouter 2c7b252, adapted to the fork's executor flow).
+- Usage dashboard quota race: stale responses from a previous provider
+  filter can no longer overwrite the active one (latest-wins request
+  tracker, no-store fetches), visible rows are scoped to the active filter,
+  and the refresh guard no longer re-subscribes the auto-refresh effects
+  (port of VansRouter f1d824b, adapted to the fork's ProviderLimits).
+
 ## 1.2.10-base (2026-10-29)
 
 ### Added
