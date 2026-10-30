@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { countBatchResults, dedupeProxyEntries, runProxyPoolBatch } from "./batchOperations.js";
+import WebshareSyncPanel from "./webshareSyncPanel.js";
 
 function parseProxyLine(line) {
   const trimmed = line.trim();
@@ -776,6 +777,8 @@ export default function ProxyPoolsPage() {
           </div>
         )}
       </div>
+
+      <WebshareSyncPanel onPoolsChanged={fetchProxyPools} />
 
       <BatchImportModal
         isOpen={showBatchImportModal}

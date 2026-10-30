@@ -32,6 +32,10 @@ export async function register() {
     "./sse/services/kimchiQuotaReactivation.js"
   );
 
+  // Webshare proxy-pool sync: on-boot sync + daily interval, both fail-open.
+  const { startWebshareSync } = await import("@/shared/services/webshareSync");
+  startWebshareSync();
+
   // Run once immediately on startup. Errors are swallowed so a failing DB
   // (e.g. not yet initialized) does not crash the server boot.
   reactivateExpiredKimchiAccounts().catch((e) => {

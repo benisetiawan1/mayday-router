@@ -3,6 +3,20 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.12-base (2026-10-30)
+
+### Added
+- Webshare.io proxy pool sync: accounts (API tokens, masked in the UI)
+  sync their proxy list from the Webshare v2 API into the proxy pools
+  registry — entries upserted with stable ids (no duplicates), user-set
+  isActive/strictProxy preserved on update, stale entries removed only
+  after a successful fetch. Sync runs on boot, daily, and on demand from
+  the new "Webshare Sync" panel on the Proxy Pools page (add account /
+  sync / deactivate / delete). Fail-open everywhere: unauthorized (401)
+  accounts are flagged but keep their pools; failed syncs touch nothing.
+  Multi-account supported, synced sequentially. Backbone/rotating mode is
+  rejected as unsupported until its schema is documented.
+
 ## 1.2.11-base (2026-10-30)
 
 ### Fixed
