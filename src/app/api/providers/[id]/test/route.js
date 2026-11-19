@@ -15,6 +15,9 @@ export async function POST(request, { params }) {
     } catch {}
     
     const result = await testSingleConnection(id, overrides);
+    if (!result.valid) {
+      console.warn(`[TEST] connection ${id} failed: ${result.error || "unknown"}`);
+    }
 
     if (result.error === "Connection not found") {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });

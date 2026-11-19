@@ -669,8 +669,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       }
       case "alicode":
       case "alicode-intl":
-      case "alims-intl":
-      case "dashscope-intl": {
+      case "alims-intl": {
         // Aliyun Coding Plan uses OpenAI-compatible API; alims-intl uses Model Studio compatible-mode
         const aliBaseUrl = connection.provider === "alicode-intl"
           ? "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
@@ -684,6 +683,16 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid API key" };
+      }
+      case "dashscope-intl": {
+        // Probe /models so the check only validates the key: a chat probe with one
+        // arbitrary model returns 403 for keys that simply lack that model, and the
+        // hardcoded "coding" endpoint is the China region (intl keys get 401 there).
+        const modelsBase = (connection.providerSpecificData?.baseUrl || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+        const res = await fetchWithConnectionProxy(`${modelsBase}/models`, {
+          headers: { "Authorization": `Bearer ${connection.apiKey}` },
+        }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
       case "volcengine-ark":
       case "byteplus": {

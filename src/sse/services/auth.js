@@ -146,6 +146,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return true;
     });
 
+    // Prefer connections whose last attempt succeeded. A dead key costs a full
+    // upstream round-trip (~3s) before fallback; with a large mostly-dead pool
+    // and round-robin that turned every request into seconds of waiting.
+    const isUnhealthy = (c) => c.testStatus === "unavailable" || c.testStatus === "error" || c.testStatus === "quota_exhausted";
+    const healthRank = (c) => (isUnhealthy(c) ? 1 : 0);
+
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
     connections.forEach(c => {
       const excluded = excludeSet.has(c.id);
@@ -155,6 +161,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? `modelLocked(${model}) until ${lockUntil}` : ""}`);
       }
     });
+
+    // Stable: healthy keep their order, unhealthy sink to the back.
+    availableConnections.sort((a, b) => healthRank(a) - healthRank(b));
 
     if (availableConnections.length === 0) {
       // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing
@@ -202,6 +211,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
       // Sort by lastUsed (most recent first) to find current candidate
       const byRecency = availableConnections.toSorted((a, b) => {
+        if (healthRank(a) !== healthRank(b)) return healthRank(a) - healthRank(b);
         if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
         if (!a.lastUsedAt) return 1;
         if (!b.lastUsedAt) return -1;
@@ -222,6 +232,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       } else {
         // Pick the least recently used (excluding current if possible)
         const sortedByOldest = availableConnections.toSorted((a, b) => {
+          if (healthRank(a) !== healthRank(b)) return healthRank(a) - healthRank(b);
           if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
           if (!a.lastUsedAt) return -1;
           if (!b.lastUsedAt) return 1;
@@ -371,14 +382,18 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     return { shouldFallback: true, cooldownMs };
   }
 
-  // Mayday Patch P23: DashScope per-model quota exhaustion detection
-  // Detect "free quota has been exhausted" and mark modelExhausted_${model} = true (permanent)
-  // instead of temporary modelLock_${model}. This shows ⚠️ Limit indicator in dashboard.
+  // Mayday Patch P23: DashScope per-model eligibility exhaustion detection.
+  // "free quota exhausted", "AccessDenied.Unpurchased" (model not enabled on that
+  // account) and overdue-payment 403s are permanent per key+model: retrying the
+  // same key can never succeed, so lock it permanently instead of for 120s.
   const connPrefix = conn?.providerSpecificData?.prefix;
   const isDashscope = connPrefix === "md" || provider === "dashscope-intl";
+  const lowerError = typeof errorText === 'string' ? errorText.toLowerCase() : '';
   const isQuotaExhausted = isDashscope && (status === 403 || status === 400) &&
     typeof errorText === 'string' &&
-    errorText.toLowerCase().includes('free quota has been exhausted');
+    (lowerError.includes('free quota has been exhausted') ||
+     errorText.includes('AccessDenied.Unpurchased') ||
+     lowerError.includes('overdue payment'));
   
   if (isQuotaExhausted && model) {
     // Rough token estimate (chars / 3.5) — detect context-window overflow before marking.
