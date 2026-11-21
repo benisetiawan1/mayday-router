@@ -3,7 +3,7 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## 1.2.13 (2026-11-21)
+## 1.2.14 (2026-11-21)
 
 ### Added
 - Upstream 9router v0.5.119 hardening port:
