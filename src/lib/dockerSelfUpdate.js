@@ -192,6 +192,9 @@ export async function startDockerSelfUpdate(targetVersion) {
     // stop itself mid-swap (the replacement needs the port the old one holds),
     // so the helper does: stop+remove old → create+start new → exit.
     setState({ phase: "recreating", message: "Recreating container…" });
+    // Use the container's *actual* name from Docker config, not MAYDAY_CONTAINER_NAME,
+    // so self-update works even when the operator named the container differently.
+    const containerName = (cfg.Name || SELF_NAME).replace(/^\//, "");
     const applyConfig = {
       Env: cfg.Config.Env,
       Labels: { ...(cfg.Config.Labels || {}), "mayday.self-updated": "true" },
@@ -205,7 +208,7 @@ export async function startDockerSelfUpdate(targetVersion) {
       Image: IMAGE,
       Cmd: ["node", "custom-server.js", "--apply-update"],
       Env: [
-        `APPLY_TARGET=${SELF_NAME}`,
+        `APPLY_TARGET=${containerName}`,
         `APPLY_IMAGE=${IMAGE}`,
         `APPLY_CONFIG_JSON=${JSON.stringify(applyConfig)}`,
         `APPLY_OLD_IMAGE=${cfg.Image}`, // image the old container ran on → pruned if untagged
