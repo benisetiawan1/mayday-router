@@ -1,5 +1,4 @@
-// Free OpenCode models that don't use the "-free" id suffix
-const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
+import { KNOWN_FREE_OPENCODE_MODELS } from "../../../../shared/constants/suggestedModels.js";
 
 // NVIDIA NIM free-tier models whitelist.
 // This is statically defined to prevent Next.js standalone dependency-splitting failures
