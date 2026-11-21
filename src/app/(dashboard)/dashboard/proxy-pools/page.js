@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { countBatchResults, dedupeProxyEntries, runProxyPoolBatch } from "./batchOperations.js";
+import {
+  filterProxyPools,
+  getVisibleProxyPoolSelection,
+  updateProxyPoolSelection,
+} from "@/shared/utils/proxyPoolSelection.js";
 import WebshareSyncPanel from "./webshareSyncPanel.js";
 
 function parseProxyLine(line) {
@@ -149,6 +154,8 @@ export default function ProxyPoolsPage() {
   const [deploying, setDeploying] = useState(false);
   const [testingId, setTestingId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [anchorId, setAnchorId] = useState(null);
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0 });
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -312,14 +319,42 @@ export default function ProxyPoolsPage() {
     }
   };
 
-  const validSelectedIds = selectedIds.filter((id) => proxyPools.some((p) => p.id === id));
-  const allSelected = proxyPools.length > 0 && validSelectedIds.length === proxyPools.length;
-  const toggleSelect = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const toggleSelectAll = () => setSelectedIds(allSelected ? [] : proxyPools.map((p) => p.id));
-  const clearSelection = () => setSelectedIds([]);
+  const visiblePools = useMemo(() => filterProxyPools(proxyPools, filterStatus), [
+    proxyPools,
+    filterStatus,
+  ]);
+  const visibleSelectedIds = getVisibleProxyPoolSelection(visiblePools, selectedIds);
+  const allSelected = visiblePools.length > 0 && visibleSelectedIds.length === visiblePools.length;
+
+  const toggleSelect = (id, e) => {
+    const shiftKey = e?.shiftKey === true;
+    setSelectedIds((prev) => {
+      const checked = !prev.includes(id);
+      return updateProxyPoolSelection(visiblePools, prev, {
+        id,
+        anchorId,
+        checked,
+        shiftKey,
+      });
+    });
+    if (!shiftKey) setAnchorId(id);
+  };
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+      setAnchorId(null);
+    } else {
+      setSelectedIds(visiblePools.map((p) => p.id));
+      setAnchorId(null);
+    }
+  };
+  const clearSelection = () => {
+    setSelectedIds([]);
+    setAnchorId(null);
+  };
 
   const bulkSetActive = async (isActive) => {
-    const targets = selectedIds.length > 0 ? selectedIds : proxyPools.map((p) => p.id);
+    const targets = visibleSelectedIds.length > 0 ? visibleSelectedIds : visiblePools.map((p) => p.id);
     if (targets.length === 0) return;
     setBulkBusy(true);
     setBatchProgress({ label: isActive ? "Activating" : "Deactivating", current: 0, total: targets.length });
@@ -343,14 +378,14 @@ export default function ProxyPoolsPage() {
   };
 
   const bulkDelete = async () => {
-    if (selectedIds.length === 0) return;
+    if (visibleSelectedIds.length === 0) return;
     setConfirmState({
       title: "Delete Proxy Pools",
-      message: `Delete ${selectedIds.length} proxy pool(s)?`,
+      message: `Delete ${visibleSelectedIds.length} proxy pool(s)?`,
       onConfirm: async () => {
         setConfirmState(null);
         setBulkBusy(true);
-        const targets = [...selectedIds];
+        const targets = [...visibleSelectedIds];
         setBatchProgress({ label: "Deleting", current: 0, total: targets.length });
         try {
           const results = await runProxyPoolBatch(targets, async (id) => {
@@ -372,9 +407,9 @@ export default function ProxyPoolsPage() {
   };
 
   const handleHealthCheck = async () => {
-    const targets = selectedIds.length > 0
-      ? proxyPools.filter((p) => selectedIds.includes(p.id))
-      : proxyPools;
+    const targets = visibleSelectedIds.length > 0
+      ? visiblePools.filter((p) => visibleSelectedIds.includes(p.id))
+      : visiblePools;
     if (targets.length === 0) return;
     setHealthChecking(true);
     setHealthProgress({ current: 0, total: targets.length });
@@ -643,11 +678,12 @@ export default function ProxyPoolsPage() {
           <span className="t"><b>01</b> · Proxy Pools</span>
           <div className="acts">
             <div className="relative" ref={relayMenuRef}>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowRelayMenu(!showRelayMenu)}
-              >
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={bulkDelete}
+              disabled={bulkBusy || healthChecking || visibleSelectedIds.length === 0}
+            >
                 Deploy Relay
                 <span className="material-symbols-outlined text-[16px]">
                   {showRelayMenu ? "expand_less" : "expand_more"}
@@ -697,6 +733,29 @@ export default function ProxyPoolsPage() {
         <div className="grid-6">
           <div className="kv"><div className="k">Total</div><div className="v">{proxyPools.length}</div></div>
           <div className="kv"><div className="k">Active</div><div className="v" style={{ color: "var(--color-success)" }}>{activeCount}</div></div>
+          <div className="kv"><div className="k">Visible</div><div className="v">{visiblePools.length}</div></div>
+        </div>
+
+        <div className="panel-head" style={{ borderBottom: "none" }}>
+          <span className="t">Filter status</span>
+          <div className="acts">
+            {["all", "enabled", "disabled"].map((s) => (
+              <label key={s} className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer">
+                <input
+                  type="radio"
+                  name="proxy-pool-status"
+                  checked={filterStatus === s}
+                  onChange={() => {
+                    setSelectedIds([]);
+                    setAnchorId(null);
+                    setFilterStatus(s);
+                  }}
+                  className="size-3.5 rounded border-border"
+                />
+                {s === "all" ? "All" : s === "enabled" ? "Enabled" : "Disabled"}
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="panel-head" style={{ borderBottom: "none" }}>
@@ -715,8 +774,8 @@ export default function ProxyPoolsPage() {
             )}
             {batchProgress.total > 0 ? (
               <span className="dim text-[11px]">{batchProgress.label} {batchProgress.current}/{batchProgress.total}</span>
-            ) : selectedIds.length > 0 ? (
-              <span className="dim text-[11px]">{selectedIds.length} selected</span>
+            ) : visibleSelectedIds.length > 0 ? (
+              <span className="dim text-[11px]">{visibleSelectedIds.length} selected</span>
             ) : healthChecking ? (
               <span className="dim text-[11px]">All pools</span>
             ) : null}
@@ -728,16 +787,16 @@ export default function ProxyPoolsPage() {
             >
               {healthChecking ? `Checking ${healthProgress.current}/${healthProgress.total}` : "Health Check"}
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => bulkSetActive(true)} disabled={bulkBusy || healthChecking || proxyPools.length === 0}>
+            <Button size="sm" variant="secondary" onClick={() => bulkSetActive(true)} disabled={bulkBusy || healthChecking || visiblePools.length === 0}>
               Activate
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => bulkSetActive(false)} disabled={bulkBusy || healthChecking || proxyPools.length === 0}>
+            <Button size="sm" variant="secondary" onClick={() => bulkSetActive(false)} disabled={bulkBusy || healthChecking || visiblePools.length === 0}>
               Deactivate
             </Button>
             <Button size="sm" variant="secondary" onClick={bulkDelete} disabled={bulkBusy || healthChecking || selectedIds.length === 0}>
               Delete
             </Button>
-            {selectedIds.length > 0 && (
+            {visibleSelectedIds.length > 0 && (
               <Button size="sm" variant="ghost" onClick={clearSelection} disabled={bulkBusy || healthChecking}>
                 Clear
               </Button>
@@ -765,9 +824,9 @@ export default function ProxyPoolsPage() {
               <PoolRow
                 key={pool.id}
                 pool={pool}
-                selected={selectedIds.includes(pool.id)}
+                selected={visibleSelectedIds.includes(pool.id)}
                 testing={testingId === pool.id}
-                onSelect={() => toggleSelect(pool.id)}
+                onSelect={(e) => toggleSelect(pool.id, e)}
                 onToggle={() => handleToggleActive(pool)}
                 onTest={() => handleTest(pool.id)}
                 onEdit={() => openEditModal(pool)}
