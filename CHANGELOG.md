@@ -3,6 +3,26 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.13 (2026-11-21)
+
+### Added
+- Upstream 9router v0.5.119 hardening port:
+  - undici bumped ^7.19.2 → ^7.30.2 (security + transport fixes)
+  - zstd `Accept-Encoding` now gated on runtime decodability (new `open-sse/utils/zstdCompat.js`) — no more raw-zstd bodies on Node < 22.15
+  - STT multipart uses undici `FormData` (was sending `[object FormData]`)
+  - Claude cloaking now renames `tool_reference` blocks (avoids 400 + resend every turn)
+  - codex_cli_rs advertised 0.136.0 → 0.167.1 (backend stops rejecting old identity)
+  - CLAUDE_CLI_VERSION 2.1.258 → 2.1.322 + `CLAUDE_CLI_VERSION` env pin support
+  - dompurify ^3.4.18, monaco-editor ^0.57.0 (security)
+- Test infrastructure restored: missing `tests/vitest.config.js` added; node:test suite split to `*.node.test.js` with `npm run test:node` runner (11 tests pass)
+- SQLite NUL-byte stripping at the bind boundary (`open-sse/utils/nullBytes.js`, applied in `driver.js`) — prevents write abort/silent truncation on all drivers
+- Bare `claude-*` model IDs route to Claude OAuth when no Anthropic connection is active
+- `thinking_levels` published on `/v1/models` + client effort picker support (new `open-sse/providers/thinkingLevels.js`)
+- Claude quota reset catch: cedar_ember reset grants (`resetCredits`), model-scoped weekly `limits[]`, `consumeClaudeResetGrant`, claude-cli User-Agent; `profileUrl`/`resetUrl` added to Claude registry
+- Proxy Pools UX: status filter (All/Enabled/Disabled), Shift+click range selection, bulk actions target visible rows only (new `src/shared/utils/proxyPoolSelection.js`)
+- ClinePass usage endpoint — `GET /api/v1/users/me/plan/usage-limits` with API key + WorkOS OAuth auth, five_hour/weekly/monthly quotas
+- Synthetic provider (`syn`): OpenAI-compatible chat at `api.synthetic.new`, `hf:` model matrix, usage quotas via `/v2/quotas`
+
 ## 1.2.12-base (2026-10-30)
 
 ### Added
