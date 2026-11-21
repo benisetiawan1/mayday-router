@@ -150,6 +150,7 @@ import p147 from "./selfhosted-stt.js";
 import p148 from "./selfhosted-tts.js";
 import p149 from "./trae.js";
 import p150 from "./windsurf.js";
+import p152 from "./synthetic.js";
 
 export default [
   p0,
@@ -302,5 +303,7 @@ export default [
   p147,
   p148,
   p149,
-  p150
+  p150,
+  p151,
+  p152
 ];
