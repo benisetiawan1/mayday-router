@@ -13,6 +13,7 @@
     "lint:reacthooks": "node scripts/lint-reacthooks.cjs",
     "lint": "eslint . --no-warn-ignored",
     "test": "npx vitest run -c tests/vitest.config.js",
+    "test:node": "node --test \"tests/*.node.test.js\"",
     "test:watch": "npx vitest -c tests/vitest.config.js",
     "build": "next build --webpack",
     "start": "node custom-server.js --port 20127",
