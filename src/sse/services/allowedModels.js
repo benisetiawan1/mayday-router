@@ -25,10 +25,19 @@ import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { guardedFetch } from "@/shared/utils/ssrfGuard.js";
 
 const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
 const LLM_KIND = "llm";
+
+// Reverse map provider alias → provider id, so /v1/models entries can resolve
+// thinking levels per (provider, model) without a DB round trip.
+const ALIAS_TO_PROVIDER = new Map();
+for (const [providerId, providerInfo] of Object.entries(AI_PROVIDERS)) {
+  const alias = getProviderAlias(providerId) || providerInfo.alias || providerId;
+  ALIAS_TO_PROVIDER.set(alias, providerId);
+}
 const ALL_KINDS = [LLM_KIND, "tts", "embedding", "image", "imageToText", "stt", "webSearch", "webFetch"];
 
 const MODEL_TYPE_TO_KIND = {
@@ -676,6 +685,14 @@ export async function buildModelsList(kindFilter, options = {}) {
     if (entry.kind === "llm" || !entry.kind) {
       if (Number.isFinite(caps.contextWindow)) model.context_length = caps.contextWindow;
       if (Number.isFinite(caps.maxOutput)) model.max_completion_tokens = caps.maxOutput;
+      // Expose selectable reasoning levels so client pickers (Kilo Code, Cursor,
+      // VS Code, OpenCode) can render an effort selector instead of guessing.
+      if (entry.owned_by !== "combo") {
+        const modelId = entry.id.includes("/") ? entry.id.split("/").slice(1).join("/") : entry.id;
+        const providerId = ALIAS_TO_PROVIDER.get(entry.owned_by) || entry.owned_by;
+        const levels = getThinkingLevels(providerId, modelId);
+        if (Array.isArray(levels) && levels.length > 0) model.thinking_levels = levels;
+      }
     }
     // Detail metadata for client pickers (VS Code / Kilo Code / CLI). Without
     // inputModalities/name clients assume text-only and refuse to attach images.
