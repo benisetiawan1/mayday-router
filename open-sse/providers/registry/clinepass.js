@@ -17,6 +17,9 @@ export default {
   transport: {
     baseUrl: "https://api.cline.bot/api/v1/chat/completions",
     thinkingFormat: "openai",
+    usage: {
+      url: "https://api.cline.bot/api/v1/users/me/plan/usage-limits",
+    },
     headers: {
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline",
@@ -39,6 +42,9 @@ export default {
     { id: "qwen3.7-max", name: "Qwen3.7 Max (ClinePass)", upstreamModelId: "cline-pass/qwen3.7-max" },
     { id: "qwen3.7-plus", name: "Qwen3.7 Plus (ClinePass)", upstreamModelId: "cline-pass/qwen3.7-plus" },
   ],
+  features: {
+    usageApikey: true,
+  },
   thinkingConfig: {
     options: ["auto", "on", "off"],
     defaultMode: "auto",
