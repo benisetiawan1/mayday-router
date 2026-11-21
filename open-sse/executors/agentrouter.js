@@ -1,5 +1,7 @@
 import { DefaultExecutor } from "./default.js";
 import { randomUUID } from "node:crypto";
+import { ACCEPT_ENCODING } from "../utils/zstdCompat.js";
+import { CLAUDE_CLI_VERSION } from "../providers/shared.js";
 
 export function buildAgentRouterHeaders(apiKey, stream = true) {
   return {
@@ -8,7 +10,7 @@ export function buildAgentRouterHeaders(apiKey, stream = true) {
     "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,effort-2025-11-24",
     "anthropic-dangerous-direct-browser-access": "true",
     "x-app": "cli",
-    "User-Agent": "claude-cli/2.1.195 (external, sdk-cli)",
+    "User-Agent": `claude-cli/${CLAUDE_CLI_VERSION} (external, sdk-cli)`,
     "X-Claude-Code-Session-Id": randomUUID(),
     "X-Stainless-Retry-Count": "0",
     "X-Stainless-Timeout": "600",
@@ -19,7 +21,7 @@ export function buildAgentRouterHeaders(apiKey, stream = true) {
     "X-Stainless-Runtime": "node",
     "X-Stainless-Runtime-Version": "v24.3.0",
     "Accept": stream ? "text/event-stream" : "application/json",
-    "accept-encoding": "gzip, deflate, br, zstd",
+    "accept-encoding": ACCEPT_ENCODING,
     ...(apiKey ? { "x-api-key": apiKey } : {})
   };
 }

@@ -4,6 +4,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbe
 import { getDefaultModel, getModelUpstreamId } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS, PROVIDER_OAUTH } from "open-sse/config/providers.js";
 import { getKimchiUserAgent } from "open-sse/utils/kimchiUserAgent.js";
+import { ACCEPT_ENCODING } from "open-sse/utils/zstdCompat.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { resolveQoderCredentials, resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
@@ -536,7 +537,7 @@ export async function POST(request) {
             method: "POST",
             headers: {
               Accept: "*/*",
-              "Accept-Encoding": "gzip, deflate, br, zstd",
+              "Accept-Encoding": ACCEPT_ENCODING,
               "Accept-Language": "en-US,en;q=0.9",
               "Cache-Control": "no-cache",
               "Content-Type": "application/json",

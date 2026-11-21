@@ -63,12 +63,27 @@ export function cloakClaudeTools(body) {
   // Client tools first, then CC decoy tools (no overlap: client tools all have _cc suffix)
   const allTools = [...clientDeclarations, ...CC_DECOY_TOOLS];
 
-  // Rename tool_use in message history (all client tools get suffix)
+  // Deferred tool loading returns tool_reference blocks inside a tool_result.
+  // They resolve against tools[] by name, so they must follow the rename or
+  // Claude rejects the request: "Tool reference '<name>' not found in available tools".
+  // Only rewrite names we actually renamed — never a decoy/built-in name.
+  // (ported from 9router v0.5.119)
+  const renameToolReferences = (content) => content.map(part =>
+    part?.type === "tool_reference" && clientToolNames.has(part.tool_name)
+      ? { ...part, tool_name: suffix(part.tool_name) }
+      : part
+  );
+
+  // Rename tool_use and tool_reference in message history (all client tools get suffix)
   const renamedMessages = body.messages?.map(msg => {
     if (!Array.isArray(msg.content)) return msg;
-    const renamedContent = msg.content.map(block =>
-      block.type === "tool_use" ? { ...block, name: suffix(block.name) } : block
-    );
+    const renamedContent = msg.content.map(block => {
+      if (block.type === "tool_use") return { ...block, name: suffix(block.name) };
+      if (block.type === "tool_result" && Array.isArray(block.content)) {
+        return { ...block, content: renameToolReferences(block.content) };
+      }
+      return block;
+    });
     return { ...msg, content: renamedContent };
   });
 

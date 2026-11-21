@@ -2,6 +2,20 @@ import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 
+// Next.js polyfills globalThis.FormData with a Web API implementation that lacks
+// internal undici symbols. When passed to fetch(), undici cannot serialize it as
+// multipart and falls back to String(body) ("[object FormData]" with text/plain).
+// Using undici's FormData ensures fetch() serializes multipart bodies correctly.
+// (ported from 9router v0.5.119)
+let FormDataImpl = globalThis.FormData;
+try {
+  const undici = await import("undici");
+  if (undici?.FormData) FormDataImpl = undici.FormData;
+} catch {
+  // Fall back to globalThis.FormData in lightweight test harnesses where undici is omitted
+}
+const FormData = FormDataImpl;
+
 // Build auth headers from sttConfig + token
 function buildAuthHeaders(cfg, token) {
   if (!token) return {};
