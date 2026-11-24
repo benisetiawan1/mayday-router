@@ -3,6 +3,29 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.15 (2026-11-24)
+
+### Added
+- **Satupod provider** (`satupod`) — native registry entry for the Satupod
+  OpenAI-compatible gateway (`https://api.satupod.com/v1`). Models are imported
+  dynamically from `/v1/models` (no hardcoded catalog, free-tier models included),
+  API-key only (no bundled credentials), and the provider card's "Get API Key"
+  button points to the Satupod signup/affiliate URL.
+  Verified end-to-end: chat, tool calling, streaming SSE, `reasoning_effort`,
+  model import, and UI listing.
+
+### Fixed
+- Satupod sets `thinkingFormat: "openai"` so requests send standard
+  `reasoning_effort` instead of vendor-native `thinking`/`enable_thinking`
+  fields that OpenAI-compatible gateways reject.
+- Removed duplicate `dashscope-intl` entry in
+  `open-sse/providers/registry/index.js` (same module imported and appended
+  twice, rendering the provider twice in the catalog).
+- `openai-compatible-*` connections now resolve to the `openai` thinking format
+  for `openai`/`openai-responses` requests (`thinkingUnified`), preventing
+  vendor thinking fields from leaking to compatible upstreams; covered by new
+  `tests/openai-compat-thinking.test.js`.
+
 ## 1.2.14 (2026-11-21)
 
 ### Added

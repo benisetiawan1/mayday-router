@@ -49,6 +49,7 @@ More: [combos](docs/screenshots/combos.png) ·
   sticky routing, one-by-one health testing, and bulk import.
 - **OAuth onboarding** for coding-agent providers (Claude Code, OpenAI Codex,
   GitHub Copilot, Cursor, and more) — no manual token handling.
+- **Satupod** — OpenAI-compatible gateway (`api.satupod.com/v1`) with free-tier models and dynamic model import; bring your own API key.
 - **Free tiers** — several providers can be used without any key at all.
 
 ### Combos (model routing)
@@ -247,6 +248,8 @@ Skills are served self-hosted at `/skills/*` so any AI agent can fetch them.
 ---
 
 ## Supported providers
+
+- **Satupod** — OpenAI-compatible gateway (`api.satupod.com/v1`) with free-tier models and dynamic model import; bring your own API key.
 
 **API-key providers (105):** A6API · AI21 Labs · Alibaba · Alibaba Coding ·
 Alibaba Studio · Alibaba Token Plan · Anthropic · AssemblyAI · AWS Polly ·

@@ -107,6 +107,17 @@ export const captureThinking = extractThinking;
 function resolveFormat(targetFormat, model, provider) {
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
+  // Dynamic OpenAI-compatible nodes are generic proxies that only accept the
+  // standard OpenAI args. Vendor-native thinking objects (`thinking`,
+  // `enable_thinking`, …) drawn from the model name pattern would 400 with
+  // "Unrecognized request argument supplied: thinking" → keep reasoning_effort.
+  if (
+    typeof provider === "string" &&
+    provider.startsWith("openai-compatible-") &&
+    (targetFormat === "openai" || targetFormat === "openai-responses")
+  ) {
+    return "openai";
+  }
   const caps = getCapabilitiesForModel(provider, model);
   if (caps.thinkingFormat) return caps.thinkingFormat;
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
