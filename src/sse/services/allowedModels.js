@@ -18,7 +18,7 @@ import {
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
-import { KNOWN_FREE_OPENCODE_MODELS } from "@/shared/constants/suggestedModels.js";
+import { isFreeOpencodeModel } from "@/shared/constants/suggestedModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
@@ -276,7 +276,8 @@ export async function fetchModelsFetcherIds(providerId, providerInfo) {
     if (fetcher.type === "opencode-free") {
       ids = rawModels.reduce((acc, m) => {
         const id = m?.id || m?.name || m?.model;
-        if (typeof id === "string" && id.trim() !== "" && (id.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(id))) acc.push(id);
+        const candidate = m && typeof m === "object" ? { ...m, id } : id;
+        if (isFreeOpencodeModel(candidate)) acc.push(id);
         return acc;
       }, []);
     } else {

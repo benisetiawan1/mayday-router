@@ -1,4 +1,4 @@
-import { KNOWN_FREE_OPENCODE_MODELS } from "../../../../shared/constants/suggestedModels.js";
+import { isFreeOpencodeModel } from "../../../../shared/constants/suggestedModels.js";
 
 // NVIDIA NIM free-tier models whitelist.
 // This is statically defined to prevent Next.js standalone dependency-splitting failures
@@ -29,7 +29,7 @@ export const FILTERS = {
 
   "opencode-free": (models) =>
     models
-      .filter((m) => m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id))
+      .filter((m) => isFreeOpencodeModel(m))
       .map((m) => ({ id: m.id, name: m.id })),
 
   // models.dev returns a large catalog; keep only mimo models

@@ -37,6 +37,7 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { markPoolUnfit } from "../services/proxyPoolFitness.js";
+import { takeToolNameMap, mergeToolNameMaps } from "../providers/opencode-free/index.js";
 
 const MAX_POOL_RETRIES = 2;
 const TOOL_PROTOCOL_PROMPT_PROVIDERS = new Set(["kimchi", "nvidia"]);
@@ -572,6 +573,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
     providerResponseFormat = result.responseFormat || targetFormat;
+    // Executor-side shaping may rename caller tools on the wire; merge its
+    // response mapping so the client gets the names it declared back.
+    const executorToolMap = takeToolNameMap(translatedBody);
+    if (executorToolMap?.size) toolNameMap = mergeToolNameMaps(toolNameMap, executorToolMap);
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     trackPendingRequest(model, provider, connectionId, false, true);

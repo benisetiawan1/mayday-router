@@ -3,6 +3,35 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.17 (2026-11-25)
+
+### Changed
+- **OpenCode Free moved to the OpenCode v2.2.3 client wire contract**
+  (`open-sse/providers/opencode-free/`, vendored from dsh-our-free-model, MIT).
+  Requests now go to `/inference/openai/v1/chat/completions` with
+  `opencode/latest/2.2.3/cli`, the four session headers, a per-request 40-hex
+  project id, the 13 official tool definitions (verbatim descriptions and
+  schemas) and the official CLI system prompt; caller tools ship under opaque
+  `mcp_<hash>` handles and are restored to their original names on the response
+  path.
+- Free-model discovery reads `https://opencode.ai/inference/v1/models` and keeps
+  catalog entries whose price is zero; the static fallback catalogue drops models
+  upstream no longer serves (muse-spark, union-alpha, systemone).
+
+### Removed
+- v1 free-lane shim (`open-sse/utils/opencodeFingerprint.js`): the
+  `x-opencode-request` header, the `bash/glob/grep/read` decoy quartet and
+  `x-opencode-project: global`.
+
+### Fixed
+- Tool names renamed for the free-lane fingerprint are now restored in streaming
+  and non-streaming responses; previously the rename map never reached the
+  response path.
+
+### Tests
+- `tests/opencode-free.test.js` covers shaping, idempotence, rename/restore,
+  header set, session minting and executor integration.
+
 ## 1.2.16 (2026-11-25)
 
 ### Fixed

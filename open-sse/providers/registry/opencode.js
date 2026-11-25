@@ -14,30 +14,16 @@ export default {
   noAuth: true,
   transport: {
     baseUrl: "https://opencode.ai",
-    headers: {
-      "x-opencode-client": "desktop",
-    },
     forceStream: true,
     noAuth: true,
-    quirks: {
-      forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
-    },
   },
+  // Fallback catalogue; the live list comes from the fetcher and the free
+  // models are whatever upstream marks with zero price.
   models: [
-    // Endpoint formats differ per model, so declare non-chat models explicitly.
-    { id: "muse-spark-1.2-contributor-free", name: "Muse Spark 1.2 Contributor Free", targetFormat: "openai-responses" },
-    { id: "muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 Contributor Free", targetFormat: "openai-responses" },
-    { id: "union-alpha", name: "Union Alpha Free", targetFormat: "claude" },
-    { id: "jev-1.13-free", name: "Jev 1.13 Free", kind: "systemone" },
+    { id: "deepseek-v4.1-flash-free", name: "DeepSeek V4.1 Flash Free" },
+    { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free" },
+    { id: "jev-1.13-free", name: "Jev 1.13 Free" },
   ],
-  serviceKinds: ["llm", "systemone"],
-  systemoneConfig: {
-    baseUrl: "https://opencode.ai/zen/v1/systemone",
-    headers: {
-      "x-opencode-client": "desktop",
-      "User-Agent": "opencode/1.18.31",
-    },
-  },
-  modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
+  modelsFetcher: { url: "https://opencode.ai/inference/v1/models", type: "opencode-free" },
   passthroughModels: true,
 };

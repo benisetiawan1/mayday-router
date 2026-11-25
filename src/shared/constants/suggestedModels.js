@@ -24,66 +24,17 @@ export const SUGGESTED_MODELS = {
   ],
 };
 
-// OpenCode Free models that do NOT use the "-free" id suffix but are still
-// served on the free tier. Kept in sync with https://opencode.ai/zen/v1/models.
-// Any model here is allowed through the opencode-free modelsFetcher filter even
-// though it doesn't end in "-free".
-export const KNOWN_FREE_OPENCODE_MODELS = [
-  "big-pickle",
-  "claude-fable-5",
-  "claude-fable-5-1",
-  "claude-haiku-4-5",
-  "claude-haiku-5-5",
-  "claude-opus-4-5",
-  "claude-opus-4-6",
-  "claude-opus-4-7",
-  "claude-opus-4-8",
-  "claude-opus-5",
-  "claude-opus-5-5",
-  "claude-sonnet-4-5",
-  "claude-sonnet-4-6",
-  "claude-sonnet-5",
-  "claude-sonnet-5-5",
-  "deepseek-v4.1-flash",
-  "deepseek-v4-pro",
-  "gemini-3.5-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-3.6-flash",
-  "gemini-3.7-flash",
-  "gemini-3.8-flash",
-  "gemini-4-argon",
-  "glm-5.3",
-  "glm-5.3-flash",
-  "gpt-5",
-  "gpt-5-codex",
-  "gpt-5-nano",
-  "gpt-5.1",
-  "gpt-5.1-codex",
-  "gpt-5.1-codex-max",
-  "gpt-5.1-codex-mini",
-  "gpt-5.2",
-  "gpt-5.2-codex",
-  "gpt-5.3-codex",
-  "gpt-5.3-codex-spark",
-  "gpt-5.4",
-  "gpt-5.4-mini",
-  "gpt-5.4-nano",
-  "gpt-5.4-pro",
-  "gpt-5.5",
-  "gpt-5.5-pro",
-  "gpt-5.6-luna",
-  "gpt-5.6-sol",
-  "gpt-5.6-terra",
-  "gpt-6-astra",
-  "gpt-6-sol",
-  "gpt-6.1-sol",
-  "gpt-6-luna",
-  "grok-4.5",
-  "grok-4.6",
-  "grok-4.7",
-  "grok-build-0.1",
-  "kimi-k2.7-code",
-  "kimi-k3",
-  "minimax-m2.5",
-  "union-alpha",
-];
+// OpenCode Free models are the ones upstream marks with zero price in its
+// catalog (GET https://opencode.ai/inference/v1/models). The id suffix and this
+// short list are only fallbacks for catalogs that omit pricing metadata.
+export const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
+
+export function isFreeOpencodeModel(model) {
+  const id = typeof model === "string" ? model : model?.id;
+  if (typeof id !== "string" || id.trim() === "") return false;
+  const price = model && typeof model === "object" ? model.cost?.text : null;
+  if (price?.input?.price !== undefined || price?.output?.price !== undefined) {
+    return (price?.input?.price ?? 0) === 0 && (price?.output?.price ?? 0) === 0;
+  }
+  return id.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(id);
+}
