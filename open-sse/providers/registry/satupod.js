@@ -16,7 +16,7 @@ export default {
   authType: "apikey",
   hasOAuth: false,
   authModes: ["apikey"],
-  serviceKinds: ["llm"],
+  serviceKinds: ["llm", "embedding"],
   transport: {
     baseUrl: "https://api.satupod.com/v1/chat/completions",
     validateUrl: "https://api.satupod.com/v1/models",
@@ -32,6 +32,12 @@ export default {
     { id: "glm-5.3-flash", name: "GLM 5.3 Flash", contextWindow: 1000000, vision: true, pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
     { id: "MiniMax-M3.1-Flash", name: "MiniMax M3.1 Flash", contextWindow: 1000000, vision: true, pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
     { id: "mimo-v2.6-flash", name: "MiMo v2.6 Flash", contextWindow: 1000000, vision: true, pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: "text-embedding-3-large", name: "Text Embedding 3 Large", kind: "embedding" },
+    { id: "text-embedding-3-small", name: "Text Embedding 3 Small", kind: "embedding" },
   ],
-
+  embeddingConfig: {
+    baseUrl: "https://api.satupod.com/v1/embeddings",
+    authType: "apikey",
+    authHeader: "bearer",
+  },
 };

@@ -9,6 +9,7 @@ const OPENAI_COMPAT_PROVIDERS = [
   "together", "nebius", "github", "nvidia", "jina-ai",
   "vercel-ai-gateway",
   "dashscope-intl",
+  "satupod",
 ];
 
 const ADAPTERS = {

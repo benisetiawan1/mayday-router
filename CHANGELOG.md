@@ -3,6 +3,17 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.18 (2026-11-25)
+
+### Fixed
+- Satupod now appears on the Embedding page and in `/v1/models/embedding`.
+  The provider previously declared only `serviceKinds: ["llm"]` and had no
+  embedding entries, so the page and model listing skipped it even though the
+  gateway serves `text-embedding-3-small` / `text-embedding-3-large`.
+  Added both models with `kind: "embedding"`, an `embeddingConfig` pointing at
+  `https://api.satupod.com/v1/embeddings`, and registered the provider with the
+  OpenAI-compatible embedding adapter.
+
 ## 1.2.17 (2026-11-25)
 
 ### Changed
