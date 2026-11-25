@@ -393,6 +393,14 @@ const CODEX_GPT_56_DEFAULT_CAPS = {
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
+  satupod: {
+    "deepseek-flash": { vision: true, tools: true, reasoning: true, contextWindow: 1000000, maxOutput: 128000, thinkingFormat: "openai", thinkingCanDisable: true, thinkingEffortSupported: true },
+    "deepseek-v4-flash": { vision: true, tools: true, reasoning: true, contextWindow: 1000000, maxOutput: 128000, thinkingFormat: "openai", thinkingCanDisable: true, thinkingEffortSupported: true },
+    "glm-5.3-flash": { vision: true, tools: true, reasoning: true, contextWindow: 1000000, maxOutput: 128000, thinkingFormat: "openai", thinkingCanDisable: true, thinkingEffortSupported: true },
+    "MiniMax-M3.1-Flash": { vision: true, tools: true, reasoning: true, contextWindow: 1000000, maxOutput: 128000, thinkingFormat: "openai", thinkingCanDisable: true, thinkingEffortSupported: true },
+    "mimo-v2.6-flash": { vision: true, tools: true, reasoning: true, contextWindow: 1000000, maxOutput: 128000, thinkingFormat: "openai", thinkingCanDisable: true, thinkingEffortSupported: true },
+  },
+
   // Kimchi provider — exactly the 4 models advertised by the Kimchi CLI.
   // Kimi entries copied from the official Kimchi CLI catalog
   // (https://models.dev/api.json, provider "moonshotai").

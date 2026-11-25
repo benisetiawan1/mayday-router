@@ -3,6 +3,16 @@
 All notable changes to Mayday Router are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 1.2.16 (2026-11-25)
+
+### Fixed
+- Satupod model metadata now matches the provider catalog: provider-scoped
+  capabilities (`contextWindow: 1000000`, vision, tools, reasoning,
+  `thinkingFormat: openai`) and pricing for `deepseek-flash`
+  ($0.15 in / $0.60 out; free models at 0). Model list entries also carry
+  context/vision/pricing as static metadata while dynamic import via
+  `/v1/models` and passthrough models stay enabled.
+
 ## 1.2.15 (2026-11-24)
 
 ### Added
